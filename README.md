@@ -27,3 +27,23 @@ composable graphical applications.
 
 Don't use it if you don't need to. You most probably won't ever need this.
 Now leave.
+
+## OK, you've got my attention. What do I need to do?
+
+Having some recent and decent version of [Racket](https://racket-lang.org/)
+installed, just clone this repository, and from your terminal run,
+for example:
+
+    $ cd sracket
+    $ racket 1.rkt
+
+## Is that it?
+
+The file "sracket.rkt" contains the whole framework. Check out, for example,
+the contents of the file "1.rkt" to see how to use the framework (there are
+some minor differences between SLAYER and SRACKET. Over time, I will try
+to eliminate them, but I doubt if I ever try to provide any further documentation).
+
+## Wow.
+
+Yeah.
