@@ -28,7 +28,7 @@ composable graphical applications.
 Don't use it if you don't need to. You most probably won't ever need this.
 Now leave.
 
-## OK, you've got my attention. What do I need to do?
+## OK, you got my attention. What do I need to do?
 
 Having some recent and decent version of [Racket](https://racket-lang.org/)
 installed, just clone this repository, and from your terminal run,
