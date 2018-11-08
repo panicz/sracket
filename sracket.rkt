@@ -3,7 +3,7 @@
 (require "ground-scheme.rkt")
 
 (provide slayer-init)
-(provide set-display-procedure! draw-image! fill-image! rectangle)
+(provide set-display-procedure! draw-image! fill-image! rectangle load-image)
 (provide keyup keydn mousemove)
 
 (define (nothing . _)
@@ -126,3 +126,6 @@
 	 (send target draw-bitmap image x y))
 	((is-a? target bitmap%)
 	 (send (drawing-context target) draw-bitmap image x y))))
+
+(define (load-image path)
+  (read-bitmap path))

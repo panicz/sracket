@@ -1,5 +1,8 @@
 #lang racket
-(provide is isnt fold-right find for memoized define/memoized out)
+(provide is isnt fold-right find for memoized define/memoized
+	 supplied-keywords supplied-keyword-arguments
+	 corresponding-keyword
+	 out)
 
 (define fold-right foldr)
 
@@ -46,7 +49,6 @@
 
 (define-syntax-rule (is . something)
   (extract-placeholders identity-syntax something () ()))
-
 (define-syntax-rule (isnt . something)
   (extract-placeholders not something () ()))
 
@@ -70,6 +72,21 @@
 
 (define-syntax-rule (define/memoized (name . args) . body)
   (define name (memoized (lambda args . body))))
+
+(define supplied-keywords (make-parameter '()))
+
+(define supplied-keyword-arguments (make-parameter '()))
+
+(define (corresponding-keyword #:to keyword #:from keywords #:in list
+			       #:default [default #false])
+  (match keywords
+    (`(,kw . ,keywords)
+     (match-let ((`(,item . ,items) list))
+       (if (eq? kw keyword)
+	   item
+	   (corresponding-keyword #:to keyword #:from keywords #:in items))))
+    ('()
+     default)))
 
 (define (out . messages)
   (for-each display messages)
