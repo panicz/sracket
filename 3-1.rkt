@@ -41,8 +41,9 @@
 	      (is top <= y <= (+ top height))))
 	(`(as-image)
 	 image)
-	(_
-	 (out "asset "self" does not support message "message)
+	(`(mouse-over)
+	 #false)
+	(`(mouse-out)
 	 #false)))
     (set! self (procedure-rename self name))
     self))
@@ -55,10 +56,10 @@
 	   (color (corresponding-keyword #:to '#:background-color
 					 #:from keywords
 					 #:in kw-args))
-	   (object (keyword-apply asset-class keywords kw-args '()))
+	   (origin (keyword-apply asset-class keywords kw-args '()))
 	   (hovered-element #false))
        (define (self . message)
-	 (match-let ((`(,left ,top) (object 'position)))
+	 (match-let ((`(,left ,top) (origin 'position)))
 	   (match message
 	     
 	     (`(mouse-down ,x ,y)
@@ -90,7 +91,7 @@
 	      (set! elements (filter (lambda (_) (isnt _ eq? element)) elements)))
 	     
 	     (`(as-image)
-	      (let ((image (object 'as-image)))
+	      (let ((image (origin 'as-image)))
 		(fill-image! image color)
 		(fold-right (lambda (element image)
 			      (match-let ((`(,x ,y) (element 'position)))
@@ -100,7 +101,7 @@
 			    elements)))
 	     
 	     (_
-	      (apply object message)))
+	      (apply origin message)))
 	   ))
        (set! self (procedure-rename self name))
        self))))
@@ -110,7 +111,7 @@
    (lambda (keywords kw-args . args)
      (let ((name (corresponding-keyword #:to '#:name #:from keywords
 					#:in kw-args #:default 'box))
-	   (object (keyword-apply visual-container-class
+	   (origin (keyword-apply visual-container-class
 				  keywords kw-args args))
 	   (hovered-element #false)
 	   (dragged-element #false))
@@ -120,13 +121,13 @@
 	    (let ((acquired (self 'acquire-element!)))
 	      (if acquired
 		  (set! dragged-element acquired)
-		  (object 'mouse-down x y))))
+		  (origin 'mouse-down x y))))
 	   
 	   (`(mouse-up ,x ,y)
 	    (when dragged-element
 	      (self 'install-element! dragged-element)
 	      (set! dragged-element #false))
-	    (object 'mouse-up x y))
+	    (origin 'mouse-up x y))
 
 	   (`(acquire-element!)
 	    (and hovered-element
@@ -137,7 +138,7 @@
 			      acquired)))
 		     (let ((acquired hovered-element))
 		       (set! hovered-element #false)
-		       (object 'remove! acquired)
+		       (origin 'remove! acquired)
 		       acquired))))
 
 	   (`(install-element! ,element)
@@ -145,23 +146,23 @@
 		(match-let ((`(,x ,y) (hovered-element 'position)))
 		  (element 'move-by! (- x) (- y))
 		  (hovered-element 'install-element! element))
-		(object 'add! element)))
+		(origin 'add! element)))
 
 	   (`(mouse-move ,x ,y ,dx ,dy)
 	    (when dragged-element
 	      (dragged-element 'move-by! dx dy))
-	    (set! hovered-element (object 'mouse-move x y dx dy))
+	    (set! hovered-element (origin 'mouse-move x y dx dy))
 	    hovered-element)
 
 	   (`(as-image)
-	    (let ((image (object 'as-image)))
+	    (let ((image (origin 'as-image)))
 	      (when dragged-element
 		(match-let ((`(,x ,y) (dragged-element 'position)))
 		  (draw-image! (dragged-element 'as-image) x y image)))
 	      image))
 	   
 	   (_
-	    (apply object message))))
+	    (apply origin message))))
        (set! self (procedure-rename self name))
        self))))
 
