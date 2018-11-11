@@ -2,7 +2,7 @@
 (require racket/set)
 (require "ground-scheme.rkt")
 
-(provide slayer-init)
+(provide slayer-init screen-size)
 (provide set-display-procedure! draw-image! fill-image! rectangle load-image)
 (provide keyup keydn mousemove)
 
@@ -89,10 +89,17 @@
                                  (parameterize ((current-drawing-context context))
                                    (display-procedure)))))))
 
+(define slayer #false)
+
 (define (slayer-init #:title [title ""] #:width [w 640] #:height [h 480])
-  (let* ((frayer (new frame% [label title] [width w] [height h]))
-         (canvas (new slayer-canvas% [parent frayer])))
-    (send frayer show #true)))
+  (unless slayer
+    (let* ((frayer (new frame% [label title] [width w] [height h]))
+	   (canvas (new slayer-canvas% [parent frayer])))
+      (send frayer show #true)
+      (set! slayer frayer))))
+
+(define (screen-size)
+  `(,(send slayer get-width) ,(send slayer get-height)))
 
 (define/memoized (drawing-context object)
   (cond ((is-a? object bitmap%)
