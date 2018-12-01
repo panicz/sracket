@@ -10,6 +10,17 @@
 (define-for-syntax (empty? stx)
   (null? (syntax->list stx)))
 
+(define-for-syntax (racket-argument? x)
+  "racket argument is either an identifier, a keyword or a [name value] pair"
+  (or (identifier? x)
+      (keyword? (syntax->datum x))
+      (let ((list (syntax->list x)))
+	(and (list? list)
+	     (= (length list) 2)
+	     (let ((name (syntax->datum (car list))))
+	       (and (not (eq? name 'quote))
+		    (not (eq? name 'quasiquote))))))))
+
 (provide #%module-begin #%app #%datum syntax-rules
          (rename-out [cdefine define]
                      [mlambda lambda]
@@ -20,10 +31,6 @@
                      [letrec-syntax/rules letrec-syntax]
                      [let-syntax/rules let-syntax]
                      [define-syntax/rules define-syntax]))
-
-
-(define (current-source-location)
-  'unknown-location)
 
 (define-syntax match-lambda-rest
   (syntax-rules ()
@@ -118,7 +125,7 @@
     (syntax-case stx ()
       
       ((_ (first-arg ... last-arg . rest-args) . body)
-       (and (every identifier? #'(first-arg ... last-arg))
+       (and (every racket-argument? #'(first-arg ... last-arg))
             (or (identifier? #'rest-args)
                 (empty? #'rest-args)))
        #'(lambda (first-arg ... last-arg . rest-args) . body))
@@ -134,12 +141,10 @@
 (define-syntax cdefine
   (syntax-rules ()
     ((_ ((head . tail) . args) body ...)
-     (cdefine (head . tail)
-              (mlambda args body ...)))
+     (cdefine (head . tail) (mlambda args body ...)))
     ((_ (function . args) body ...)
      (define function
-       (with-procedure-properties ((name 'function))
-                                  (smlambda args body ...))))
+       (mlambda args body ...)))
     ((_ . rest)
      (define . rest))
     ))
@@ -191,7 +196,8 @@
       ((_ ((structure structures ... expression)) body + ...)
        #'(call-with-values (lambda () expression)
                            (match-lambda-rest
-                            (error '(let ((structure structures ... expression)) body + ...))
+                            (error '(let ((structure structures ... expression))
+				      body + ...))
                             (structure structures ... . _)
                             () body + ...)))
       
@@ -203,8 +209,9 @@
       
       ((_ name ((structure structures ... expression)) body + ...)
        (identifier? #'name)
-       #'(let ((name (match-lambda-rest (error '(let name ((structure structures ... expression))
-                                                  body + ...))
+       #'(let ((name (match-lambda-rest
+		      (error '(let name ((structure structures ... expression))
+				body + ...))
                       (structure structures ...) () body + ...)))
            (call-with-values (lambda () expression) name)))
       
