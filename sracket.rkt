@@ -1,11 +1,14 @@
 #lang racket/gui
 (require racket/set)
 (require "ground-scheme.rkt")
+(require "grand-syntax.rkt")
 
 (provide slayer-init screen-size)
 (provide set-display-procedure! draw-image! fill-image! rectangle load-image)
 
-(provide width height)
+(provide line-between!)
+
+(provide width height image-size)
 (provide render-text current-font)
 (provide keyup keydn mousemove)
 
@@ -119,9 +122,9 @@
 (define (rectangle width height [color #f])
   (let ((image (make-bitmap width height #;alpha #true)))
     (when color
-      (match-let* ((`(,red ,green ,blue) (rgb color))
-		   (color (make-object color% red green blue))
-		   (dc (new bitmap-dc% [bitmap image])))
+      (let* ((`(,red ,green ,blue) (rgb color))
+	     (color (make-object color% red green blue))
+	     (dc (drawing-context image) #;(new bitmap-dc% [bitmap image])))
 	(send dc set-background color)
 	(send dc clear)))
     image))
@@ -137,11 +140,19 @@
     (send dc clear)
     image))
 
+
+(define-syntax (send-image image/context message args ...)
+  (cond ((is-a? image/context dc<%>)
+	 (send image/context message args ...))
+	((is-a? image/context bitmap%)
+	 (send (drawing-context image/context) message args ...))))
+
 (define (draw-image! image [x 0] [y 0] [target (current-drawing-context)])
-  (cond ((is-a? target dc<%>)
-	 (send target draw-bitmap image x y))
-	((is-a? target bitmap%)
-	 (send (drawing-context target) draw-bitmap image x y))))
+  (send-image target draw-bitmap image x y))
+
+(define (line-between! x1 y1 x2 y2 [target (current-drawing-context)])
+  (send-image target draw-line x1 y1 x2 y2))
+						  
 
 (define (load-image path)
   (read-bitmap path))
@@ -156,31 +167,36 @@
     (send measure-context set-font font)
     (let-values (((w h baseline-to-bottom extra-vertical-space)
 		  (send measure-context get-text-extent string)))
-      (match-let* ((`(,w ,h) (map (lambda (v)
-				    (if (inexact? v)
-					(inexact->exact
-					 (ceiling v))
-					v))
-				  `(,w ,h)))
-		   (background (rectangle w h #;background-color))
-		   (dc (drawing-context background)))
+      (let* ((`(,w ,h) (map (lambda (v)
+			      (if (inexact? v)
+				  (inexact->exact
+				   (ceiling v))
+				  v))
+			    `(,w ,h)))
+	     (background (rectangle w h #;background-color))
+	     (dc (drawing-context background)))
 	(cond (background-color
-	       (match-let* ((`(,r ,g ,b) (rgb background-color))
-			    (bg-color (make-object color% r g b)))
+	       (let* ((`(,r ,g ,b) (rgb background-color))
+		      (bg-color (make-object color% r g b)))
 		 (send dc set-text-mode 'solid)
 		 (send dc set-text-background bg-color)))
 	      (else
 	       (send dc set-text-mode 'transparent)))
 	(send dc set-font font)
 	(when color
-	  (match-let* ((`(,r ,g ,b)  (rgb color))
-		       (color (make-object color% r g b)))
+	  (let* ((`(,r ,g ,b)  (rgb color))
+		 (color (make-object color% r g b)))
 	    (send dc set-text-foreground color)))
 	(send dc draw-text string 0 0)
 	background))))
+
+
+(define (image-size image)
+  `(,(send image get-width) ,(send image get-height)))
 
 (define (width image)
   (send image get-width))
 
 (define (height image)
   (send image get-height))
+
