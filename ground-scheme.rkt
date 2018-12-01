@@ -1,10 +1,16 @@
 #lang racket
-(provide is isnt fold-right find for memoized define/memoized
+(require srfi/17)
+
+(provide is isnt fold-right fold-left find for memoized
+	 define/memoized
 	 supplied-keywords supplied-keyword-arguments
 	 corresponding-keyword
+	 define# lambda#
 	 out)
 
 (define fold-right foldr)
+
+(define fold-left foldl)
 
 (define find findf)
 
@@ -92,3 +98,19 @@
   (for-each display messages)
   (newline)
   (flush-output))
+
+(define-syntax-rule (lambda# args body . *)
+  (let ((default (lambda args body . *))
+	(patches (make-weak-hash)))
+    (getter-with-setter
+     (lambda args
+       (if (hash-has-key? patches args)
+	   (apply values (hash-ref patches args))
+	   (apply args value)))
+     (lambda args
+       (hash-set! patches (drop-right args 1) (last args))))))
+
+(define-syntax-rule (define# (mapping . args) body . *)
+  (define mapping (lambda# args body . *)))
+
+     
