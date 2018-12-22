@@ -8,7 +8,7 @@
 
 (provide line-between!)
 
-(provide width height image-size)
+(provide width height image-size make-bitmap)
 (provide render-text current-font)
 (provide keyup keydn mousemove)
 
