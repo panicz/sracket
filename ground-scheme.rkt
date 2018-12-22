@@ -1,16 +1,26 @@
 #lang racket
 (require srfi/17)
-
+(require racket/match)
 (provide is isnt fold-right fold-left find for memoized
 	 define/memoized
 	 supplied-keywords supplied-keyword-arguments
 	 corresponding-keyword
 	 define# lambda#
-	 out)
+	 out merge ->string)
 
-(define fold-right foldr)
+(define (fold-left op e l)
+  (match l
+    (`(,h . ,t)
+     (fold-left op (op e h) t))
+    (_
+     e)))
 
-(define fold-left foldl)
+(define (fold-right op e l)
+  (match l
+    (`(,h . ,t)
+     (op h (fold-right op e t)))
+    (_
+     e)))
 
 (define find findf)
 
@@ -94,6 +104,11 @@
     ('()
      default)))
 
+(define (->string expression)
+  (with-output-to-string
+    (lambda ()
+      (display expression))))
+
 (define (out . messages)
   (for-each display messages)
   (newline)
@@ -113,4 +128,16 @@
 (define-syntax-rule (define# (mapping . args) body . *)
   (define mapping (lambda# args body . *)))
 
-     
+(define (merge list-a list-b <)
+  (cond ((null? list-a)
+	 list-b)
+	((null? list-b)
+	 list-a)
+	(else
+	 (match-let ((`(,ha . ,ta) list-a)
+		     (`(,hb . ,tb) list-b))
+	   (if (is ha < hb)
+	       `(,ha . ,(merge ta list-b <))
+	       `(,hb . ,(merge list-a tb <)))))))
+
+  

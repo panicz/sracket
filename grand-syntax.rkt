@@ -142,9 +142,12 @@
   (syntax-rules ()
     ((_ ((head . tail) . args) body ...)
      (cdefine (head . tail) (mlambda args body ...)))
+
     ((_ (function . args) body ...)
      (define function
-       (mlambda args body ...)))
+       (procedure-rename 
+	(mlambda args body ...)
+	'function)))
     ((_ . rest)
      (define . rest))
     ))
