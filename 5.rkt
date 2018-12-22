@@ -10,11 +10,6 @@
 
 (keydn 'escape exit)
 
-;; Zasady:
-;; 1. funkcje, które nie są polimorficzne (ale które być może wymagają
-;; odczytu prywatnych zmiennych) starajmy się wydobyć na zewnątrz
-;; (ewentualnie je parametryzując)
-
 (define (my self)
   (and self `(,(self 'class) ,(self 'as-expression))))
 
@@ -57,10 +52,6 @@
       (match message
 	(`(class) 'caption)
 	(`(as-expression) atomic-expression)
-	(`(mouse-over)
-	 (out "mouse over " atomic-expression))
-	(`(mouse-out)
-	 (out "mouse out " atomic-expression))
 	(_
 	 (apply target message))))
   self))
@@ -79,10 +70,7 @@
        (set! left x)
        (set! top y))
       (`(mouse-down)
-       (out (my self)" received mouse-down")
        (and-let* ((`(,object ,action) (target 'mouse-down)))
-	 (out "moving "(object 'as-expression)
-	      " from "(self 'as-expression)" by "(- left)"x"(- top))
 	 (object 'move-by! (- left) (- top))
 	 `(,object ,action)))
       
@@ -148,14 +136,10 @@
        (find (% 'embraces? x y) elements))
       
       (`(add-elements! . ,new-elements)
-       (out "adding elements "(map (% 'as-expression) new-elements)
-	    " to "(self 'as-expression))
        (set! elements (merge new-elements elements before?))
        (out "after addition: "(self 'as-expression)))
       
       (`(remove-element! ,element)
-       (out "removing "(element 'class)" "(element 'as-expression)
-	    " from "(self 'as-expression) (map (% 'class) elements))
        (set! elements (delete! element elements))
        (out "after removal: "(self 'as-expression)))
 
@@ -213,7 +197,8 @@
 				 (acquired 'move-by! x y)))
 			   acquired)))
 		  (let ((element hovered-element))
-		    (self 'remove-element! hovered-element)		     element))))
+		    (self 'remove-element! hovered-element)
+		    element))))
 
 	(_
 	 (apply collection message))))
@@ -248,7 +233,6 @@
 
 	(`(mouse-up)
 	 (and-let* ((formerly obscuring))
-	   (out "putting "(my obscuring)" somewhere")
 	   (acquirable 'add-elements! obscuring)
 	   (set! obscuring #false)
 	   (set! on-drag #false)
@@ -461,14 +445,3 @@
 	      #:height h)))
 
 (set-stage! desk)
-
-;; Kolejny zestaw pytań.
-;; Co się powinno dziać, kiedy workdesk woła 'acquire-element?
-;; 1. ponieważ workdesk jest "obscurable hovering", mamy w nim
-;; "hovered-element".
-;; 2. pytamy naszego "hovered-element", czy on sam nie dałby nam
-;; jakiegoś elementu
-;; 3. jeżeli otrzymamy od niego odpowiedź odmowną, to bierzemy
-;; sam "hovered-element" i usuwamy go z kolekcji
-;; 4. w przeciwnym razie otrzymany od hovered-elementu
-;; obiekt przesuwamy o 
