@@ -8,7 +8,7 @@
 
 (provide line-between!)
 
-(provide width height image-size make-bitmap)
+(provide width height image-size make-bitmap clear-image!)
 (provide render-text current-font)
 (provide keyup keydn mousemove)
 
@@ -149,6 +149,9 @@
 
 (define (draw-image! image [x 0] [y 0] [target (current-drawing-context)])
   (send-image target draw-bitmap image x y))
+
+(define (clear-image! image)
+  (send-image image clear))
 
 (define (line-between! x1 y1 x2 y2 [target (current-drawing-context)])
   (send-image target draw-line x1 y1 x2 y2))
