@@ -1,12 +1,14 @@
 #lang racket
 (require srfi/17)
+(require (only-in srfi/1 zip))
 (require racket/match)
-(provide is isnt fold-right fold-left find for memoized
+(require "grand-syntax.rkt")
+(provide is isnt fold-right fold-left find for memoized zip
 	 define/memoized
 	 supplied-keywords supplied-keyword-arguments
 	 corresponding-keyword
 	 define# lambda#
-	 out merge ->string)
+	 out merge ->string set!)
 
 (define (fold-left op e l)
   (match l
@@ -114,14 +116,14 @@
   (newline)
   (flush-output))
 
-(define-syntax-rule (lambda# args body . *)
-  (let ((default (lambda args body . *))
-	(patches (make-weak-hash)))
+(define-syntax-rule (lambda# params body . *)
+  (let ((default (lambda params body . *))
+	(patches (make-hash)))
     (getter-with-setter
      (lambda args
        (if (hash-has-key? patches args)
-	   (apply values (hash-ref patches args))
-	   (apply args value)))
+	   (hash-ref patches args)
+	   (apply default args)))
      (lambda args
        (hash-set! patches (drop-right args 1) (last args))))))
 
