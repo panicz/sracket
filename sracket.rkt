@@ -1,12 +1,13 @@
 #lang racket/gui
 (require racket/set)
+(require racket/draw/arrow)
 (require "ground-scheme.rkt")
 (require "grand-syntax.rkt")
 
-(provide slayer-init screen-size)
+(provide slayer-init screen-size drawing-context)
 (provide set-display-procedure! draw-image! fill-image! rectangle load-image)
 
-(provide line-between!)
+(provide line-between! draw-ellipsis! arrow)
 
 (provide width height image-size make-bitmap clear-image!)
 (provide render-text current-font)
@@ -109,7 +110,9 @@
 
 (define/memoized (drawing-context object)
   (cond ((is-a? object bitmap%)
-	 (new bitmap-dc% [bitmap object]))
+	 (let ((context (new bitmap-dc% [bitmap object])))
+	   (send context set-brush (new brush% [style 'transparent]))
+	   context))
 	(else
 	 (error "Unable to create drawing context for "object))))
 
@@ -129,6 +132,13 @@
 	(send dc clear)))
     image))
 
+(define (arrow x1 y1 x2 y2)
+  (let* ((w (abs (- x1 x2)))
+	 (h (abs (- y1 y2)))
+	 (image (rectangle w h)))
+    (draw-arrow (drawing-context image)
+		x1 y1 x2 y2 0 0)
+    image))
 
 (define (fill-image! image color)
   (let* ((blue (bitwise-and color #xff))
@@ -139,13 +149,13 @@
     (send dc set-background color)
     (send dc clear)
     image))
-
-
+	 
 (define-syntax (send-image image/context message args ...)
   (cond ((is-a? image/context dc<%>)
 	 (send image/context message args ...))
 	((is-a? image/context bitmap%)
-	 (send (drawing-context image/context) message args ...))))
+	 (let ((context (drawing-context image/context)))
+	   (send context message args ...)))))
 
 (define (draw-image! image [x 0] [y 0] [target (current-drawing-context)])
   (send-image target draw-bitmap image x y))
@@ -155,7 +165,10 @@
 
 (define (line-between! x1 y1 x2 y2 [target (current-drawing-context)])
   (send-image target draw-line x1 y1 x2 y2))
-						  
+
+(define (draw-ellipsis! x y w h
+				 [target (current-drawing-context)])
+  (send-image target draw-arc 0 0 w h 0 (* 8 (atan 1))))
 
 (define (load-image path)
   (read-bitmap path))
@@ -192,7 +205,6 @@
 	    (send dc set-text-foreground color)))
 	(send dc draw-text string 0 0)
 	background))))
-
 
 (define (image-size image)
   `(,(send image get-width) ,(send image get-height)))
