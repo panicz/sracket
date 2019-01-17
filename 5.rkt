@@ -2,6 +2,7 @@
 #lang racket
 (require racket/match)
 (require (only-in srfi/1 delete!))
+(require racket/draw/arrow)
 (require "sracket.rkt")
 (require "ground-scheme.rkt")
 (require "grand-syntax.rkt")
@@ -16,52 +17,43 @@
 (define ((% . message) %)
   (apply % message))
 
-(define (thing #:name [name 'thing])
-  (define (self . message)
-    (match message
-      (`(name)
-       name)
-      (`(class)
-       'thing)
-      (_
-       #false)))
-  self)
+(define (??? . _) ???)
 
-(define (sprite #:image image
-		#:name [name 'sprite]
-		#:target [target (thing #:name name)])
-  (define (self . message)
-    (match message
-      (`(class) 'sprite)
-      (`(as-image) image)
-      (`(size) (image-size image))
-      (`(embraces? ,x ,y)
-       (let ((`(,w ,h) (image-size image)))
-	 (and (is 0 <= x <= w)
-	      (is 0 <= y <= h))))
-      (_
-       (apply target message))))
-  self)
+#;(define# (instance? x)
+  #false)
 
-(define (caption atomic-expression)
+(define (instance? x)
+  (and (procedure? x)
+       (isnt x eq? ???)))
+
+(define (Sprite #:image image)
+   (lambda message
+     (match message
+       (`(class) 'Sprite)
+       (`(as-image) image)
+       (`(size) (image-size image))
+       (`(embraces? ,x ,y)
+	(let ((`(,w ,h) (image-size image)))
+	  (and (is 0 <= x <= w)
+	       (is 0 <= y <= h))))
+       (_
+	#false))))
+
+(define (Caption atomic-expression)
   (let* ((text (->string atomic-expression))
 	 (name (string->symbol text))
-	 (target (sprite #:image (render-text text)
-			 #:name name)))
-    (define (self . message)
+	 (target (Sprite #:image (render-text text))))
+    (lambda message
       (match message
-	(`(class) 'caption)
+	(`(class) 'Caption)
 	(`(as-expression) atomic-expression)
 	(_
-	 (apply target message))))
-  self))
+	 (apply target message))))))
 
-(define (situated target
-		  #:left [left 0]
-		  #:top [top 0])
-  (define (self . message)
+(define (Situated target #:left [left 0] #:top [top 0])
+  (lambda message
     (match message
-      (`(class) 'situated)
+      (`(class) 'Situated)
       (`(position) `(,left ,top))
       (`(move-by! ,x ,y)
        (set! left (+ left x))
@@ -83,8 +75,7 @@
       (`(situated?)
        #true)
       (_
-       (apply target message))))
-  self)
+       (apply target message)))))
 
 (define (overlay-images objects background)
   (fold-left (lambda (background object)
@@ -95,13 +86,19 @@
 	     background
 	     objects))
 
+(define (exact number)
+  (if (inexact? number)
+      (inexact->exact number)
+      number))
+
 (define (total-area objects)
-  (fold-left (lambda (`(,X ,Y) element)
-	       (let ((`(,x ,y) (element 'position))
-		     (`(,w ,h) (element 'size)))
-		 `(,(max X (+ x w)) ,(max Y (+ y h)))))
-	     '(0 0)
-	     objects))
+  (map (compose exact ceiling)
+       (fold-left (lambda (`(,X ,Y) element)
+		    (let ((`(,x ,y) (element 'position))
+			  (`(,w ,h) (element 'size)))
+		      `(,(max X (+ x w)) ,(max Y (+ y h)))))
+		  '(0 0)
+		  objects)))
 
 (define (before? lag1 lag2)
   (let ((`(,left1 ,top1) (lag1 'position))
@@ -115,10 +112,10 @@
 (define (transparent width height)
   (make-bitmap width height #true))
 
-(define (collection elements #:name [name 'collection])
+(define (Collection elements #:name [name 'collection])
   (define (self . message)
     (match message
-      (`(class) 'collection)
+      (`(class) 'Collection)
       (`(size) (total-area elements))
 
       (`(as-image)
@@ -156,11 +153,11 @@
        #false)))
   self)
 
-(define (hovering collection)
+(define (Hovering collection)
   (let ((hovered-element #false))
     (define (self . message)
       (match message
-	(`(class) 'hovering)
+	(`(class) 'Hovering)
 	
 	(`(mouse-move ,x ,y ,dx ,dy)
 	 (let ((hovered (collection 'element-at x y)))
@@ -193,8 +190,9 @@
 			 (begin 
 			   (if (eq? acquired hovered-element)
 			       (self 'remove-element! acquired)
-			       (let ((`(,x ,y) (hovered-element 'position)))
-				 (acquired 'move-by! x y)))
+			       (when (instance? acquired)
+				 (let ((`(,x ,y) (hovered-element 'position)))
+				   (acquired 'move-by! x y))))
 			   acquired)))
 		  (let ((element hovered-element))
 		    (self 'remove-element! hovered-element)
@@ -204,13 +202,13 @@
 	 (apply collection message))))
     self))
 
-(define (obscurable acquirable #:width width #:height height)
+(define (Obscurable acquirable #:width width #:height height)
   (let ((obscuring #false)
 	(on-drag #false)
 	(background (rectangle width height)))
-    (define (self . message)
+    (lambda message
       (match message
-	(`(class) 'obscurable)
+	(`(class) 'Obscurable)
 	(`(as-image)
 	 (clear-image! background)
 	 (draw-image! (acquirable 'as-image) 0 0 background)
@@ -228,22 +226,23 @@
 	 (let ((element (acquirable 'acquire-element!)))
 	   (when element
 	     (set! obscuring element)
-	     (let ((action (element 'obscuring-action)))
-	       (set! on-drag action)))))
+	     (if (instance? element)
+		 (let ((action (element 'obscuring-action)))
+		   (set! on-drag action))
+		 (acquirable 'mouse-down)))))
 
 	(`(mouse-up)
 	 (and-let* ((formerly obscuring))
-	   (acquirable 'add-elements! obscuring)
+	   (when (instance? obscuring)
+	     (acquirable 'add-elements! obscuring))
 	   (set! obscuring #false)
 	   (set! on-drag #false)
 	   formerly))
 	(_
-	 (apply acquirable message))))
-    self))
+	 (apply acquirable message))))))
 
-(define (draw-parentheses! image)
-  (let ((`(,width ,height) (image-size image))
-	(X 3))
+(define (draw-parentheses! image width height)
+  (let ((X 3))
     (line-between! 0 0 X 0 image)
     (line-between! 0 0 0 height image)
     (line-between! 0 (- height 1) X (- height 1) image)
@@ -252,21 +251,26 @@
     (line-between! (- width 1) 0 (- width 1) (- height 1) image)
     (line-between! (- width 1) (- height 1) (- width X) (- height 1) image)))
 
-(define (parenthesized target
-		       #:width [width #false]
-		       #:height [height #false]
-		       #:name [name 'parenthesized])
+(define (draw-softbox! image w h)
+  (draw-ellipsis! 0 0 w h image))
+
+(define (Decorated target
+		   #:width [width #false]
+		   #:height [height #false]
+		   #:left [left 0]
+		   #:top [top 0]
+		   #:decoration [decorate! (lambda _ #false)])
   (let* ((`(,target-width ,target-height) (target 'size))
-	 (width (or width target-width))
-	 (height (or height target-height))
+	 (width (or width (+ left target-width)))
+	 (height (or height (+ top target-height)))
 	 (background (rectangle width height)))
-    (define (self . message)
+    (lambda message
       (match message
-	(`(class) 'parenthesized)
+	(`(class) 'Decorated)
 	(`(as-image)
 	 (clear-image! background)
-	 (draw-parentheses! background)
-	 (draw-image! (target 'as-image) 0 0 background)
+	 (decorate! background width height)
+	 (draw-image! (target 'as-image) left top background)
 	 background)
 
 	(`(size)
@@ -287,14 +291,17 @@
 	 (set! background (rectangle width height)))
 
 	(_
-	 (apply target message))))
-    self))
+	 (apply target message))))))
 
-(define (highlighting target)
+(define (parallel-lines! image w h)
+  (line-between! 0 0 w 0 image)
+  (line-between! 0 (- h 1) w (- h 1) image))
+
+(define (Highlighting target #:decoration [highlight! parallel-lines!])
   (let ((highlight? #false))
-    (define (self . message)
+    (lambda message
       (match message
-	(`(class) 'highlighting)
+	(`(class) 'Highlighting)
 	(`(mouse-over)
 	 (set! highlight? #true)
 	 (target 'mouse-over))
@@ -305,19 +312,17 @@
 	 (let* ((image (target 'as-image))
 		(`(,w ,h) (image-size image)))
 	   (when highlight?
-	     (line-between! 0 0 w 0 image)
-	     (line-between! 0 (- h 1) w (- h 1) image))
+	     (highlight! image w h))
 	   image))
 	(_
-	 (apply target message))))
-    self))
+	 (apply target message))))))
   
-(define (mouse-tracking target)
+(define (MouseTracking target)
   (let ((mouse-left 0)
 	(mouse-top 0))
-    (define (self . message)
+    (lambda message
       (match message
-	(`(class) 'mouse-tracking)
+	(`(class) 'MouseTracking)
 	(`(mouse-move ,x ,y ,dx ,dy)
 	 (set! mouse-left x)
 	 (set! mouse-top y)
@@ -329,50 +334,57 @@
 	(`(mouse-down)
 	 (target 'mouse-down))
 	(_
-	 (apply target message))))
-    self))
+	 (apply target message))))))
 
 (define (drag object x y dx dy)
   (object 'move-by! dx dy))
 
-(define (draggable mouse-tracking-collection)
-  (define (self . message)
+(define (Draggable mouse-tracking-collection)
+  (lambda message
     (match message
       (`(obscuring-action)
        drag)
+      ('(class)
+       'Draggable)
       (_
-       (apply mouse-tracking-collection message))))
-  self)
+       (apply mouse-tracking-collection message)))))
 
-(define (stretchable target #:margin (margin 5))
-  (define (self . message)
+(define (Stretchable target #:margin (margin 5))
+  (lambda message
     (match message
-      (`(class) 'stretchable)
+      (`(class) 'Stretchable)
       (`(obscuring-action)
        (let ((`(,left ,top) (target 'position))
 	     (`(,width ,height) (target 'size))
-	     (`(,x ,y) (target 'mouse-position)))
-	 
+	     (`(,x ,y) (target 'mouse-position)))	 
 	 (cond ((is x <= margin)
 		(if (is y < (/ height 2))
 		    (lambda (self x y dx dy)
 		      (self 'move-by! dx dy)
+		      (target 'collective
+			      (lambda (items)
+				(for-each (% 'move-by! (- dx) (- dy)) items)))
 		      (self 'resize-by! (- dx) (- dy)))
 		    (lambda (self x y dx dy)
 		      (self 'move-by! dx 0)
+		      (target 'collective
+			      (lambda (items)
+				(for-each (% 'move-by! (- dx) 0) items)))
 		      (self 'resize-by! (- dx) dy))))
 	       ((is (- width margin) <= x)
 		(if (is y < (/ height 2))
 		    (lambda (self x y dx dy)
 		      (self 'move-by! 0 dy)
+		      (target 'collective
+			      (lambda (items)
+				(for-each (% 'move-by! 0 (- dy)) items)))
 		      (self 'resize-by! dx (- dy)))
 		    (lambda (self x y dx dy)
 		      (self 'resize-by! dx dy))))
 	       (else
 		(target 'obscuring-action)))))
       (_
-       (apply target message))))
-  self)
+       (apply target message)))))
 
 
 (define (set-stage! stage)
@@ -401,46 +413,171 @@
 	     `(,(horizontal-space) ,(vertical-space))
 	     elements))
 
-(define (box bitboxes)
-  (let ((collection (collection bitboxes)))
+(define (Box bitboxes)
+  (let ((collection (Collection bitboxes)))
     (collection 'collective horizontal-layout!)
     (let ((`(,w ,h) (collection 'size)))
-      (stretchable
-       (draggable
-	(situated
-	 (mouse-tracking
-	  (hovering
-	   (highlighting
-	    (parenthesized
+      (Stretchable
+       (Draggable
+	(Situated
+	 (MouseTracking
+	  (Hovering
+	   (Highlighting
+	    (Decorated
 	     collection
 	     #:width (+ w (horizontal-space))
-	     #:height (+ h (vertical-space))))))))))))
+	     #:height (+ h (vertical-space))
+	     #:decoration draw-parentheses!))))))))))
 
-(define (bit atom)
-  (draggable (mouse-tracking (situated (caption atom)))))
+(define (Bit atom)
+  (let* ((caption (Caption atom))
+	 (`(,w ,h) (caption 'size)))
+    (Draggable
+     (Situated
+      (MouseTracking
+       (Highlighting
+	(Decorated caption
+		   #:left 3 #:top 3
+		   #:width (+ w 6) #:height (+ h 6))
+	#:decoration draw-softbox!))))))
 
-(define (bitbox document)
+(define (BitBox document)
   (if (list? document)
-      (box (map bitbox document))
-      (bit document)))
+      (Box (map BitBox document))
+      (Bit document)))
 
-(define (workdesk initial-document #:width width #:height height)
-  (let* ((desk (obscurable
-		(hovering
-		 (collection (map bitbox initial-document)))
+(define# (interactions symbol)
+  #false)
+
+(define-syntax (define-interaction (name . args) interaction)
+  (set! (interactions 'name) (lambda args interaction)))
+
+(define (BitBox+ document)
+  (cond ((and-let* ((`(,keyword . ,args) document)
+		    (interaction (interactions keyword)))
+	   (apply interaction args)))
+	((list? document)
+	 (Box (map BitBox+ document)))
+	(else
+	 (Bit document))))
+
+(define (points-on-circle number)
+  (let* ((2pi (* 8 (atan 1)))
+	 (slice (/ 2pi (exact->inexact number))))
+    (map (lambda (k)
+	   (let ((fraction (* slice k)))
+	     `(,(cos fraction) ,(sin fraction))))
+	 (range 0 number))))
+
+(define (lay-out-in-circle! objects #:radius [radius #false])
+  (let* ((n (length objects))
+	 (r (or radius
+		(* 2 (apply max (map (lambda (object)
+				       (apply max (object 'size)))
+				     objects)))))
+	 (points (points-on-circle n)))
+    (for-each (lambda (object `(,x ,y))
+		(object 'move-by! (+ (* x r) r) (+ (* y r) r)))
+	      objects points)))
+
+(define (Vertex name #:surplus [surplus 3] #:radius [radius #false])
+  (let* ((caption (Caption name))
+	 (`(,w ,h) (caption 'size))
+	 (radius (or radius (/ (+ (sqrt (+ (* w w) (* h h))) surplus) 2)))
+	 (diameter (inexact->exact (ceiling (* 2 radius))))
+	 (left (inexact->exact (ceiling (- radius (/ w 2)))))
+	 (top (inexact->exact (ceiling (- radius (/ h 2))))))
+    (Draggable
+     (Situated
+      (MouseTracking
+       (Decorated
+	(lambda message
+	  (match message
+	    (`(radius)
+	     radius)
+	    (_
+	     (apply caption message))))
+	#:left left #:top top
+	#:width diameter #:height diameter
+	#:decoration draw-softbox!))))))
+
+(define (draw-edge! v1 v2 image)
+  (let* ((r1 (v1 'radius))
+	 (p1 (v1 'position))
+	 (r2 (v2 'radius))
+	 (p2 (v2 'position))
+	 (d (map - p2 p1))
+	 (/d (/ (sqrt (apply + (map (lambda (x) (* x x)) d)))))
+	 (`(,p1x ,p1y) (map (lambda (a b)
+			      (inexact->exact (ceiling (+ a (* r1 b /d)))))
+			    p1 d))
+	 (`(,p2x ,p2y) (map (lambda (a b)
+			      (inexact->exact (ceiling (- a (* r2 b /d)))))
+			    p2 d)))
+    (draw-arrow (drawing-context image)
+		p1x p1y p2x p2y 15 15)))
+
+(define (Graph neighbour-list)
+  (let ((vertices (map (lambda (`(,node . ,neigbours))
+			 (Vertex node))
+		       neighbour-list)))
+    (lay-out-in-circle! vertices)
+    (let* ((collection (Collection vertices))
+	   (`(,w ,h) (collection 'size))
+	   (contents (Draggable
+		      (Situated
+		       (MouseTracking
+			(Hovering
+			 (Decorated collection
+				    #:left 3 #:top 3
+				    #:width (+ w 6) #:height (+ h 6)
+				    #:decoration draw-parentheses!)))))))
+      (lambda message
+	(match message
+	  (`(as-image)
+	   (let ((image (contents 'as-image)))
+	     (for `(,source (,node . ,neighbours)) in (zip vertices
+							   neighbour-list)
+	       (for neighbour in neighbours
+		 (let ((target (find (lambda (v)
+				       (eq? neighbour (v 'as-expression)))
+				     vertices)))
+		   (draw-edge! source target image))))
+	     image))
+	  (`(as-expression)
+	   `(digraph . ,neighbour-list))
+	  (`(acquire-element!)
+	   #false)
+	  (_
+	   (apply contents message)))))))
+	
+(define-interaction (digraph . neighbour-list)
+  (Graph neighbour-list))
+
+(define (Workdesk initial-document #:width width #:height height)
+  (let* ((desk (Obscurable
+		(Hovering
+		 (Collection (map BitBox+ initial-document)))
 		#:width width #:height height)))
     (desk 'collective vertical-layout!)
     desk))
 
 (define desk
   (let ((`(,w ,h) (screen-size)))
-    (workdesk '(x
+    (Workdesk '(x
 		(f x)
 		(f (f x))
 		(define (! n)
 		  (if (= n 0)
 		      1
-		      (* n (! (- n 1))))))
+		      (* n (! (- n 1)))))
+		(e.g. (! 5) ===> 120)
+		(digraph
+		 (A B C D)
+		 (B A C)
+		 (C B)
+		 (D A)
+		 (E)))
 	      #:width w
 	      #:height h)))
 
