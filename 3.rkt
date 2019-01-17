@@ -1,7 +1,9 @@
+#!/usr/bin/env racket
 #lang racket
 (require racket/match)
 (require "sracket.rkt")
 (require "ground-scheme.rkt")
+(require "grand-syntax.rkt")
 
 (slayer-init #:title "GRASP 3: draggable rectangles with draggable rectangles\
  that can be taken outside")
@@ -22,7 +24,7 @@
 
 (define (box #:left left #:top top #:width width #:height height
 	     #:background-color color 
-	     #:name [name "box"] . elements)
+	     #:name name . elements)
   (let ((dragged-element #false)
 	(hovered-element #false)
 	(image (rectangle width height color)))
@@ -43,16 +45,17 @@
 	 (when dragged-element
 	   (self 'install-element! dragged-element)
 	   (set! dragged-element #false))
+	 (self 'mouse-move x y 0 0)
 	 (when hovered-element
 	   (hovered-element 'mouse-up (- x left) (- y top))))
 
 	(`(acquire-hovered-element!)
 	 (and hovered-element
-	      (or (let ((acquired (hovered-element 'acquire-hovered-element!)))
-		    (and acquired
-			 (match-let ((`(,x ,y) (hovered-element 'position)))
-			   (acquired 'move-by! x y)
-			   acquired)))
+	      (or (and-let* ((acquired (hovered-element
+					'acquire-hovered-element!))
+			     (`(,x ,y) (hovered-element 'position)))
+		    (acquired 'move-by! x y)
+		    acquired)
 		  (let ((acquired hovered-element))
 		    (set! hovered-element #false)
 		    (set! elements (filter (lambda (_) (isnt _ eq? acquired))
@@ -61,7 +64,7 @@
 
 	(`(install-element! ,element)
 	 (if hovered-element
-	     (match-let ((`(,x ,y) (hovered-element 'position)))
+	     (let ((`(,x ,y) (hovered-element 'position)))
 	       (element 'move-by! (- x) (- y))
 	       (hovered-element 'install-element! element))
 	     (set! elements `(,element . ,elements))))
@@ -85,7 +88,7 @@
 	(`(as-image)
 	 (fill-image! image color)
 	 (fold-right (lambda (element image)
-		       (match-let ((`(,x ,y) (element 'position)))
+		       (let ((`(,x ,y) (element 'position)))
 			 (draw-image! (element 'as-image) x y image)
 			 image))
 		     image
@@ -103,7 +106,7 @@
     self))
 
 (define stage
-  (match-let ((`(,w ,h) (screen-size)))
+  (let ((`(,w ,h) (screen-size)))
     (box #:left 0 #:top 0 #:width w #:height h
 	 #:name 'stage #:background-color #x77000000
 	 (box #:left 10 #:top 10 #:width 200 #:height 200
