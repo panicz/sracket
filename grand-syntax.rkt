@@ -145,7 +145,7 @@
 
     ((_ (function . args) body ...)
      (define function
-       (procedure-rename 
+       (procedure-rename
 	(mlambda args body ...)
 	'function)))
     ((_ . rest)
@@ -158,12 +158,15 @@
      (call-with-values (lambda () call) list))))
 
 (define-syntax-rule (match-let/error ((structure expression) ...)
-                                     body + ...)
+				     body + ...)
   ((match-lambda-rest
-    (error '(let ((structure expression) ...) body + ...))
+    (error "Invalid pattern:"
+	   '(let ((structure expression) ...) body + ...)
+	   `(expression ,expression) ...)
+    
     (structure ...) () body + ...)
    expression ...))
-     
+
 (define-syntax named-match-let-values
   (lambda (stx)
     (syntax-case stx ()
