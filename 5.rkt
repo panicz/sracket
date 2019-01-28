@@ -148,7 +148,7 @@
 
       (`(name)
        name)
-      
+
       (_
        #false)))
   self)
@@ -198,6 +198,11 @@
 		    (self 'remove-element! hovered-element)
 		    element))))
 
+	(`(right-mouse-up)
+	 (if hovered-element
+	     (hovered-element 'right-mouse-up)
+	     (collection 'right-mouse-up)))
+	
 	(_
 	 (apply collection message))))
     self))
@@ -386,10 +391,12 @@
       (_
        (apply target message)))))
 
-
 (define (set-stage! stage)
   (set-display-procedure! (lambda () (draw-image! (stage 'as-image))))
   (mousemove (lambda (x y dx dy) (stage 'mouse-move x y dx dy)))
+  (keydn 'mouse-right (lambda _ (stage 'right-mouse-down)))
+  (keyup 'mouse-right (lambda _ (stage 'right-mouse-up)))
+  
   (keydn 'mouse-left (lambda _ (stage 'mouse-down)))
   (keyup 'mouse-left (lambda _ (stage 'mouse-up))))
 
@@ -413,6 +420,23 @@
 	     `(,(horizontal-space) ,(vertical-space))
 	     elements))
 
+(define (Reinterpretable origin)
+  (let ((interpretation origin))
+    (lambda message
+      (match message
+	(`(right-mouse-up)
+	 (out "reinterpreting "(origin 'as-expression))
+	 (cond ((eq? interpretation origin)
+		(and-let* ((`(,name . ,args) (origin 'as-expression))
+			   (interaction (interactions name))
+			   (reinterpretation (apply interaction args)))
+		  (set! interpretation reinterpretation)))
+	       (else
+		(set! interpretation origin))))
+	
+	(_
+	 (apply interpretation message))))))
+
 (define (Box bitboxes)
   (let ((collection (Collection bitboxes)))
     (collection 'collective horizontal-layout!)
@@ -424,10 +448,10 @@
 	  (Hovering
 	   (Highlighting
 	    (Decorated
-	     collection
-	     #:width (+ w (horizontal-space))
-	     #:height (+ h (vertical-space))
-	     #:decoration draw-parentheses!))))))))))
+	     (Reinterpretable collection)
+	      #:width (+ w (horizontal-space))
+	      #:height (+ h (vertical-space))
+	      #:decoration draw-parentheses!))))))))))
 
 (define (Bit atom)
   (let* ((caption (Caption atom))
@@ -452,15 +476,6 @@
 (define-syntax (define-interaction (name . args) interaction)
   (set! (interactions 'name) (lambda args interaction)))
 
-(define (BitBox+ document)
-  (cond ((and-let* ((`(,keyword . ,args) document)
-		    (interaction (interactions keyword)))
-	   (apply interaction args)))
-	((list? document)
-	 (Box (map BitBox+ document)))
-	(else
-	 (Bit document))))
-
 (define (points-on-circle number)
   (let* ((2pi (* 8 (atan 1)))
 	 (slice (/ 2pi (exact->inexact number))))
@@ -469,7 +484,7 @@
 	     `(,(cos fraction) ,(sin fraction))))
 	 (range 0 number))))
 
-(define (lay-out-in-circle! objects #:radius [radius #false])
+(define (laid-out-in-circle! objects #:radius [radius #false])
   (let* ((n (length objects))
 	 (r (or radius
 		(* 2 (apply max (map (lambda (object)
@@ -478,7 +493,8 @@
 	 (points (points-on-circle n)))
     (for-each (lambda (object `(,x ,y))
 		(object 'move-by! (+ (* x r) r) (+ (* y r) r)))
-	      objects points)))
+	      objects points)
+    objects))
 
 (define (Vertex name #:surplus [surplus 3] #:radius [radius #false])
   (let* ((caption (Caption name))
@@ -515,27 +531,27 @@
 			      (inexact->exact (ceiling (- a (* r2 b /d)))))
 			    p2 d)))
     (draw-arrow (drawing-context image)
-		p1x p1y p2x p2y 15 15)))
+		p1x p1y p2x p2y 12 12)))
+
 
 (define (Graph neighbour-list)
-  (let ((vertices (map (lambda (`(,node . ,neigbours))
-			 (Vertex node))
-		       neighbour-list)))
-    (lay-out-in-circle! vertices)
-    (let* ((collection (Collection vertices))
-	   (`(,w ,h) (collection 'size))
-	   (contents (Draggable
-		      (Situated
-		       (MouseTracking
-			(Hovering
+  (let* ((vertices (laid-out-in-circle!
+		    (map (lambda (`(,node . ,neigbours))
+			   (Vertex node))
+			 neighbour-list)))
+	 (collection (Collection vertices))
+	 #;(contents (Stretchable
+		    (Draggable
+		     (Situated
+		      (MouseTracking
+		       (Hovering
+			(Highlighting 
 			 (Decorated collection
-				    #:left 3 #:top 3
-				    #:width (+ w 6) #:height (+ h 6)
-				    #:decoration draw-parentheses!)))))))
+				    #:decoration draw-parentheses!)))))))))
       (lambda message
 	(match message
 	  (`(as-image)
-	   (let ((image (contents 'as-image)))
+	   (let ((image (collection #;contents 'as-image)))
 	     (for `(,source (,node . ,neighbours)) in (zip vertices
 							   neighbour-list)
 	       (for neighbour in neighbours
@@ -549,15 +565,15 @@
 	  (`(acquire-element!)
 	   #false)
 	  (_
-	   (apply contents message)))))))
-	
+	   (apply collection #;contents message))))))
+
 (define-interaction (digraph . neighbour-list)
   (Graph neighbour-list))
 
 (define (Workdesk initial-document #:width width #:height height)
   (let* ((desk (Obscurable
 		(Hovering
-		 (Collection (map BitBox+ initial-document)))
+		 (Collection (map BitBox initial-document)))
 		#:width width #:height height)))
     (desk 'collective vertical-layout!)
     desk))
