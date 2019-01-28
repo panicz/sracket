@@ -23,8 +23,7 @@
   (keyup 'mouse-left (lambda (x y) (stage 'mouse-up x y))))
 
 (define (box #:left left #:top top #:width width #:height height
-	     #:background-color color 
-	     #:name name . elements)
+	     #:background-color color . elements)
   (let ((dragged-element #false)
 	(hovered-element #false)
 	(image (rectangle width height color)))
@@ -102,22 +101,22 @@
 	(`(mouse-out)
 	 (out "mouse-out "self)))
       )
-    (set! self (procedure-rename self name))
     self))
+
 
 (define stage
   (let ((`(,w ,h) (screen-size)))
     (box #:left 0 #:top 0 #:width w #:height h
-	 #:name 'stage #:background-color #x77000000
+	 #:background-color #x77000000
 	 (box #:left 10 #:top 10 #:width 200 #:height 200
-	      #:name 'upper #:background-color #x77cc00
+	      #:background-color #x77cc00
 	      (box #:left 10 #:top 10 #:width 50 #:height 50
-		   #:name 'upper-inner #:background-color #x0077cc)
+		   #:background-color #x0077cc)
 	      (box #:left 140 #:top 140 #:width 50 #:height 50
-		   #:name 'undraggable #:background-color #xcc0077))
+		   #:background-color #xcc0077))
 	 (box #:left (- w 210) #:top (- h 210) #:width 200 #:height 200
-	      #:name 'lower #:background-color #x7700cc
+	       #:background-color #x7700cc
 	      (box #:left 140 #:top 140 #:width 50 #:height 50
-		   #:name 'lower-inner #:background-color #xcc7700)))))
+		   #:background-color #xcc7700)))))
 
 (set-stage! stage)
