@@ -27,26 +27,46 @@
 (define keydown-bindings (make-hasheq))
 (define keyup-bindings (make-hasheq))
 
-(define (keydn key proc)
-  (hash-set! keydown-bindings key proc))
+(define (keydown-handler key . args)
+  (out "keydn for "key" not defined"))
 
-(define (keyup key proc)
-  (hash-set! keyup-bindings key proc))
+(define (keyup-handler key . args)
+  (out "keyup for "key" not defined"))
+
+(define keydn
+  (case-lambda
+    ((key proc)
+     (hash-set! keydown-bindings key proc))
+    ((default)
+     (set! keydown-handler default))))
+
+(define keyup
+  (case-lambda
+    ((key proc)
+     (hash-set! keyup-bindings key proc))
+    ((default)
+     (set! keyup-handler default))))
+
 
 (define (key-press key . args)
   (apply (hash-ref keydown-bindings key
-                   (lambda _
-                     (out "keydn for "key" not defined")
-                     nothing))
-         args))
+		   (lambda _ keydown-handler)) (if (null? args)
+					      `(,key)
+					      ;; Ugly hack
+					      ;; to make
+					      ;; the old demos
+					      ;; work
+					      args)))
 
 (define (key-release key . args)
   (apply (hash-ref keyup-bindings key
-                   (lambda _
-                     (out "keyup for "key" not defined")
-                     nothing))
-         args))
-
+		   (lambda _ keyup-handler)) (if (null? args)
+					    `(,key)
+					    ;; Ugly hack
+					    ;; to make
+					    ;; the old demos
+					    ;; work
+					    args)))
 (define mouse-move nothing)
 
 (define (mousemove proc)
@@ -166,9 +186,8 @@
 (define (line-between! x1 y1 x2 y2 [target (current-drawing-context)])
   (send-image target draw-line x1 y1 x2 y2))
 
-(define (draw-ellipsis! x y w h
-				 [target (current-drawing-context)])
-  (send-image target draw-arc 0 0 w h 0 (* 8 (atan 1))))
+(define (draw-ellipsis! x y w h [target (current-drawing-context)])
+  (send-image target draw-arc x y w h 0 (* 8 (atan 1))))
 
 (define (load-image path)
   (read-bitmap path))
