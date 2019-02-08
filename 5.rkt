@@ -1,7 +1,7 @@
 #!/usr/bin/env racket
 #lang racket
 (require racket/match)
-(require (only-in srfi/1 delete!))
+(require (only-in srfi/1 delete! list-index))
 (require racket/draw/arrow)
 (require "sracket.rkt")
 (require "ground-scheme.rkt")
@@ -18,6 +18,9 @@
   (apply % message))
 
 (define (??? . _) ???)
+
+(define (Un whatever thing)
+  thing)
 
 #;(define# (instance? x)
   #false)
@@ -97,7 +100,7 @@
 		    (let ((`(,x ,y) (element 'position))
 			  (`(,w ,h) (element 'size)))
 		      `(,(max X (+ x w)) ,(max Y (+ y h)))))
-		  '(0 0)
+		  '(1 1)
 		  objects)))
 
 (define (before? lag1 lag2)
@@ -111,6 +114,10 @@
 
 (define (transparent width height)
   (make-bitmap width height #true))
+
+;; late night tales
+;; david hornps
+;; 
 
 (define (Collection elements #:name [name 'collection])
   (define (self . message)
@@ -131,9 +138,16 @@
 
       (`(element-at ,x ,y)
        (find (% 'embraces? x y) elements))
+
+      (`(element-at ,index)
+       (and (is index < (length elements))
+	    (list-ref elements index)))
+
+      (`(index-of ,element)
+       (list-index (is _ eq? element) elements))
       
-      (`(add-elements! . ,new-elements)
-       (set! elements (merge new-elements elements before?))
+      (`(add-element! ,new-element)
+       (set! elements (merge `(,new-element) elements before?))
        (out "after addition: "(self 'as-expression)))
       
       (`(remove-element! ,element)
@@ -153,6 +167,78 @@
        #false)))
   self)
 
+
+;; Mamy 4 możliwości:
+;; 1. element jest parą punktów (dodajemy punkcik do obrazka)
+;; 2. element jest liczbą (indeksem na liście)
+;; 3. element jest #true (dekorujemy sami siebie!)
+;; 4. element jest #false (nic nie robimy)
+;;
+;; Załóżmy sobie na razie, że zamieniami
+;; (Hovering (Collection x))
+;; na
+;; (Hovering (Selecting (Collection x)))
+;; Wówczas musimy zmodyfikować metody następująco:
+;; - acquire-element!
+;;   - powinien sprawić, że aktualnie wybrany element przestaje
+;;     być wybrany (działanie wyprowadzane z Workdeska)
+;; - add-element!
+;;   - ostatnio dodany element ma zostać wybrany
+;;     zaś dodatkowo - jeśli od czasu ostatniego "acquire-element!"
+;;     mysz nie była ruszana - ma zostać "wybrany z kursorem myszy"
+;;   - jeżeli dodajemy obiekt do jakiegoś pudełka, to zapamiętujemy
+;;     sobie indeks
+;;
+;; - remove-element!
+;;   
+
+(define (Selectable collection [boxed #true])
+  
+  (let ((selected #false))
+    ;; selected can be either:
+    ;; - a positive integer, meaning that the selected item
+    ;;   is a child at a corresponding index
+    ;; - a pair of coordinates, meaning that
+    (lambda message
+      (match message
+	(`(as-image)
+	 (let ((image (collection 'as-image)))
+	   (when (and boxed selected (collection 'collection?))
+	     (let ((`(,w ,h) (image-size image)))
+	       (line-between! 0 0 (- w 2) 0 image)
+	       (line-between! 1 1 (- w 2) 1 image)
+	       (line-between! 1 1 1 (- h 2) image)
+	       (line-between! 1 (- h 2) (- w 2) (- h 2) image)
+	       (line-between! 0 (- h 1) (- w 2) (- h 1) image)
+	       (line-between! (- w 2) 1 (- w 2) (- h 2) image)))
+	   (and-let* ((`(,x ,y) selected))
+	     (draw-ellipsis! (- x 2) (- y 2) 4 4 image))
+	   image))
+
+	(`(select-cursor! (,x ,y))
+	 (set! selected `(,x ,y)))
+
+	(`(key-down ,key)
+	 (if (integer? selected)
+	     (let ((target (collection 'element-at selected)))
+	       (target 'key-down key))
+	     (out (collection 'as-expression))))
+	
+	(`(select! ,element)
+	 (unless selected
+	   (set! selected (collection 'index-of element))
+	   (out "selected "selected)))
+
+	(`(unselect!)
+	 (when (integer? selected)
+	   ;;(out "recursively unselecting "(my collection)" "selected)
+	   ((collection 'element-at selected) 'unselect!))
+	 ;;(out "unselecting "(my collection)" "selected)
+	 (set! selected #false))
+
+	(_
+	 (apply collection message))))))
+
 (define (Hovering collection)
   (let ((hovered-element #false))
     (define (self . message)
@@ -171,12 +257,16 @@
 	     (hovered-element 'mouse-move x y dx dy))
 	   hovered-element))
 	
-	(`(add-elements! . ,elements)
-	 (if (and hovered-element (hovered-element 'collection?))
-	     (let ((`(,x ,y) (hovered-element 'position)))
-	       (for-each (% 'move-by! (- x) (- y)) elements)
-	       (apply hovered-element 'add-elements! elements))
-	     (apply collection 'add-elements! elements)))
+	(`(add-element! ,element)
+	 (cond ((and hovered-element
+		     (hovered-element 'collection?))
+		(let ((`(,x ,y) (hovered-element 'position)))
+		  (element 'move-by! (- x) (- y))
+		  (hovered-element 'add-element! element)
+		  (collection 'select! hovered-element)))
+	       (else
+		(collection 'add-element! element)
+		(collection 'select! element))))
 
 	(`(remove-element! ,element)
 	 (when (eq? element hovered-element)
@@ -202,10 +292,11 @@
 	 (if hovered-element
 	     (hovered-element 'right-mouse-up)
 	     (collection 'right-mouse-up)))
-	
+
 	(_
 	 (apply collection message))))
     self))
+
 
 (define (Obscurable acquirable #:width width #:height height)
   (let ((obscuring #false)
@@ -228,23 +319,57 @@
 	 (acquirable 'mouse-move x y dx dy))
 
 	(`(mouse-down)
+	 (acquirable 'unselect!)
 	 (let ((element (acquirable 'acquire-element!)))
-	   (when element
-	     (set! obscuring element)
-	     (if (instance? element)
-		 (let ((action (element 'obscuring-action)))
-		   (set! on-drag action))
-		 (acquirable 'mouse-down)))))
+	   (if element
+	       (begin
+		 (set! obscuring element)
+		 (if (instance? element)
+		     (let ((action (element 'obscuring-action)))
+		       (set! on-drag action))
+		     (acquirable 'mouse-down)))
+	       (let ((position (acquirable 'mouse-position)))
+		 (acquirable 'select-cursor! position)))))
 
+	(`(right-mouse-up)	 
+	 (acquirable 'unselect!)
+	 (acquirable 'right-mouse-up))
+	
 	(`(mouse-up)
 	 (and-let* ((formerly obscuring))
 	   (when (instance? obscuring)
-	     (acquirable 'add-elements! obscuring))
-	   (set! obscuring #false)
+	     (acquirable 'add-element! obscuring))
+ 	   (set! obscuring #false)
 	   (set! on-drag #false)
 	   formerly))
+	(`(obscuring-element)
+	 obscuring)
+	
 	(_
 	 (apply acquirable message))))))
+
+(define (Selecting obscurable)
+  (let ((about-to-select-cursor #false))
+    (lambda message
+      (match message
+	(`(mouse-down)
+	 (obscurable 'mouse-down)
+	 (and-let* ((obscuring (obscurable 'obscuring-element)))
+	   (set! about-to-select-cursor #true)))
+	
+	(`(mouse-move ,x ,y ,dx ,dy)
+	 (set! about-to-select-cursor #false)
+	 (obscurable 'mouse-move x y dx dy))
+
+	(`(mouse-up)
+	 (and-let* ((selected (obscurable 'mouse-up))
+		    (position (selected 'mouse-position)))
+	   (selected 'select-cursor! position)
+	   selected))
+	
+	(_
+	 (apply obscurable message))))))
+	
 
 (define (draw-parentheses! image width height)
   (let ((X 3))
@@ -321,7 +446,7 @@
 	   image))
 	(_
 	 (apply target message))))))
-  
+
 (define (MouseTracking target)
   (let ((mouse-left 0)
 	(mouse-top 0))
@@ -333,11 +458,13 @@
 	 (set! mouse-top y)
 	 (target 'mouse-move x y dx dy))
 
+	(`(add-element! ,element)
+	 (target 'add-element! element)
+	 (target 'mouse-move mouse-left mouse-top 0 0))
+	
 	(`(mouse-position)
 	 `(,mouse-left ,mouse-top))
-
-	(`(mouse-down)
-	 (target 'mouse-down))
+	
 	(_
 	 (apply target message))))))
 
@@ -398,7 +525,12 @@
   (keyup 'mouse-right (lambda _ (stage 'right-mouse-up)))
   
   (keydn 'mouse-left (lambda _ (stage 'mouse-down)))
-  (keyup 'mouse-left (lambda _ (stage 'mouse-up))))
+  (keyup 'mouse-left (lambda _ (stage 'mouse-up)))
+  (keydn (lambda (key)
+	   (stage 'key-down key)))
+  (keyup (lambda (key)
+	   (stage 'key-up key))))
+
 
 (define vertical-space (make-parameter 5))
 
@@ -426,6 +558,7 @@
       (match message
 	(`(right-mouse-up)
 	 (out "reinterpreting "(origin 'as-expression))
+	 ;;(interpretation 'unselect!)
 	 (cond ((eq? interpretation origin)
 		(and-let* ((`(,name . ,args) (origin 'as-expression))
 			   (interaction (interactions name))
@@ -446,12 +579,13 @@
 	(Situated
 	 (MouseTracking
 	  (Hovering
-	   (Highlighting
-	    (Decorated
-	     (Reinterpretable collection)
+	   (Selectable
+	    (Highlighting
+	     (Decorated
+	      (Reinterpretable collection)
 	      #:width (+ w (horizontal-space))
 	      #:height (+ h (vertical-space))
-	      #:decoration draw-parentheses!))))))))))
+	      #:decoration draw-parentheses!)))))))))))
 
 (define (Bit atom)
   (let* ((caption (Caption atom))
@@ -459,11 +593,12 @@
     (Draggable
      (Situated
       (MouseTracking
-       (Highlighting
-	(Decorated caption
-		   #:left 3 #:top 3
-		   #:width (+ w 6) #:height (+ h 6))
-	#:decoration draw-softbox!))))))
+       (Selectable 
+	(Highlighting
+	 (Decorated caption
+		    #:left 3 #:top 3
+		    #:width (+ w 6) #:height (+ h 6))
+	 #:decoration draw-softbox!)))))))
 
 (define (BitBox document)
   (if (list? document)
@@ -533,25 +668,16 @@
     (draw-arrow (drawing-context image)
 		p1x p1y p2x p2y 12 12)))
 
-
 (define (Graph neighbour-list)
   (let* ((vertices (laid-out-in-circle!
 		    (map (lambda (`(,node . ,neigbours))
 			   (Vertex node))
 			 neighbour-list)))
-	 (collection (Collection vertices))
-	 #;(contents (Stretchable
-		    (Draggable
-		     (Situated
-		      (MouseTracking
-		       (Hovering
-			(Highlighting 
-			 (Decorated collection
-				    #:decoration draw-parentheses!)))))))))
+	 (collection (Collection vertices)))
       (lambda message
 	(match message
 	  (`(as-image)
-	   (let ((image (collection #;contents 'as-image)))
+	   (let ((image (collection 'as-image)))
 	     (for `(,source (,node . ,neighbours)) in (zip vertices
 							   neighbour-list)
 	       (for neighbour in neighbours
@@ -565,16 +691,20 @@
 	  (`(acquire-element!)
 	   #false)
 	  (_
-	   (apply collection #;contents message))))))
+	   (apply collection message))))))
 
 (define-interaction (digraph . neighbour-list)
   (Graph neighbour-list))
 
 (define (Workdesk initial-document #:width width #:height height)
-  (let* ((desk (Obscurable
-		(Hovering
-		 (Collection (map BitBox initial-document)))
-		#:width width #:height height)))
+  (let* ((desk (Selecting
+		(Obscurable
+		 (MouseTracking
+		  (Hovering
+		   (Selectable
+		    (Collection (map BitBox initial-document))
+		    #false)))
+		 #:width width #:height height))))
     (desk 'collective vertical-layout!)
     desk))
 
@@ -583,6 +713,7 @@
     (Workdesk '(x
 		(f x)
 		(f (f x))
+		()
 		(define (! n)
 		  (if (= n 0)
 		      1
