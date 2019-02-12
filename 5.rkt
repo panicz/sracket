@@ -115,10 +115,6 @@
 (define (transparent width height)
   (make-bitmap width height #true))
 
-;; late night tales
-;; david hornps
-;; 
-
 (define (Collection elements #:name [name 'collection])
   (define (self . message)
     (match message
@@ -163,47 +159,94 @@
       (`(name)
        name)
 
+      (`(elements)
+       elements)
+       
       (_
        #false)))
   self)
 
 
-;; Mamy 4 możliwości:
-;; 1. element jest parą punktów (dodajemy punkcik do obrazka)
-;; 2. element jest liczbą (indeksem na liście)
-;; 3. element jest #true (dekorujemy sami siebie!)
-;; 4. element jest #false (nic nie robimy)
-;;
-;; Załóżmy sobie na razie, że zamieniami
-;; (Hovering (Collection x))
-;; na
-;; (Hovering (Selecting (Collection x)))
-;; Wówczas musimy zmodyfikować metody następująco:
-;; - acquire-element!
-;;   - powinien sprawić, że aktualnie wybrany element przestaje
-;;     być wybrany (działanie wyprowadzane z Workdeska)
-;; - add-element!
-;;   - ostatnio dodany element ma zostać wybrany
-;;     zaś dodatkowo - jeśli od czasu ostatniego "acquire-element!"
-;;     mysz nie była ruszana - ma zostać "wybrany z kursorem myszy"
-;;   - jeżeli dodajemy obiekt do jakiegoś pudełka, to zapamiętujemy
-;;     sobie indeks
-;;
-;; - remove-element!
-;;   
-
-(define (Selectable collection [boxed #true])
+(define (Selectable origin [boxed #true])
   
   (let ((selected #false))
     ;; selected can be either:
     ;; - a positive integer, meaning that the selected item
     ;;   is a child at a corresponding index
-    ;; - a pair of coordinates, meaning that
-    (lambda message
+    ;;   (the thing must be a collection for that to happen)
+    ;; - a pair of numbers which represent the coordinates
+    ;; of a cursor
+    (define (self . message)
+      (define (in-between index)
+	 (let ((preceding following (split-at (origin 'elements) index)))
+	   (match `(,preceding ,following)
+	     (`(() ())
+	      (out "in-between emptiness")
+	      `(5 5))
+	     (`(() (,next . ,_))
+	      (let ((`(,x ,y) (next 'position))
+		    (`(,w ,h) (next 'size)))
+		(out "in-between: first is "(my next))
+		`(,(- x 3) ,(/ (+ y h) 2))))
+	     (`(,preceding ())
+	      (let* ((previous (last preceding))
+		     (`(,x ,y) (previous 'position))
+		     (`(,w ,h) (previous 'size)))
+		(out "in-between: last is "(my previous))
+		`(,(+ x w 3) ,(/ (+ y h) 2))))
+	     (`(,preceding (,next . ,_))
+	      (let* ((previous (last preceding))
+		     (`(,x ,y) (previous 'position))
+		     (`(,w ,h) (previous 'size))
+		     (`(,x* ,y*) (next 'position)))
+		(out "in between "(my previous)" and "(my next))
+		`(,(/ (+ x w x*) 2) ,(/ (+ y h) 2)))))))
+      
+      (define (move-cursor! direction increment shift)
+	(cond
+	  ((integer? selected)
+	   (or (and-let* ((child (origin 'element-at selected)))
+		 (out "trying next child to "selected" in "(my child))
+		 (child 'key-down direction))
+	       (and-let* ((elements (self 'elements))
+			  (total-children (length elements))
+			  ((is selected < total-children))
+			  (child (list-ref elements selected)))
+		 (begin
+		   (child 'unselect!)
+		   (set! selected (in-between (+ selected increment)))
+		   #true))))
+	  ((list? selected)
+	   (and-let* ((`(,x ,y) selected)
+		      (elements (self 'elements))
+		      (cursor (lambda message
+				(match message
+				  (`(position)
+				   `(,(- x 2) ,(- y 16)))
+				  (`(size)
+				   `(4 20)))))
+		      (index (+ shift
+				(index-preceding (is cursor before? _)
+						 elements)))
+		      ((is 0 <= index < (length elements))))
+	     (set! selected index)
+	     ((list-ref elements selected) 'select-cursor! `(5 10))
+	     (out "selected "index" in "(my self))
+	     #true))
+
+	  (else
+	   #false)))
+      
       (match message
+	(`(key-down right)
+	 (move-cursor! 'right +1 0))
+
+	(`(key-down left)
+	 (move-cursor! 'left 0 -1))
+	
 	(`(as-image)
-	 (let ((image (collection 'as-image)))
-	   (when (and boxed selected (collection 'collection?))
+	 (let ((image (origin 'as-image)))
+	   (when (and boxed selected (origin 'collection?))
 	     (let ((`(,w ,h) (image-size image)))
 	       (line-between! 0 0 (- w 2) 0 image)
 	       (line-between! 1 1 (- w 2) 1 image)
@@ -216,28 +259,54 @@
 	   image))
 
 	(`(select-cursor! (,x ,y))
+	 #;(and-let* ((elements (origin 'elements))
+		    (cursor (lambda message
+			      (match message
+				(`(position)
+				 `(,(- x 2) ,(- y 16)))
+				(`(size)
+				 `(4 20)))))
+		    (index (index-preceding (is cursor before? _) elements))
+		    (before after (split-at elements index)))
+	   (out "cursor placed between "
+		(map (% 'as-expression) before)" and "
+		(map (% 'as-expression) after)))
 	 (set! selected `(,x ,y)))
+
+	(`(select-previous-child!)
+	 (and (integer? selected)
+	      (self 'collection?)
+	      (is selected > 0)
+	      (begin
+		(set! selected (- selected 1))
+		#true)))
 
 	(`(key-down ,key)
 	 (if (integer? selected)
-	     (let ((target (collection 'element-at selected)))
+	     (let ((target (origin 'element-at selected)))
 	       (target 'key-down key))
-	     (out (collection 'as-expression))))
+	     (out (origin 'as-expression))))
+
+	(`(force-select! ,selection)
+	 (set! selected selection))
+	
+	(`(select-first!)
+	 (set! selected 0))
 	
 	(`(select! ,element)
 	 (unless selected
-	   (set! selected (collection 'index-of element))
-	   (out "selected "selected)))
+	   (set! selected (origin 'index-of element))))
 
 	(`(unselect!)
-	 (when (integer? selected)
-	   ;;(out "recursively unselecting "(my collection)" "selected)
-	   ((collection 'element-at selected) 'unselect!))
-	 ;;(out "unselecting "(my collection)" "selected)
+	 (and-let* (((integer? selected))
+		    (child (origin 'element-at selected)))
+	   (child 'unselect!))
+	 (out "unselecting "(my self))
 	 (set! selected #false))
 
 	(_
-	 (apply collection message))))))
+	 (apply origin message))))
+    self))
 
 (define (Hovering collection)
   (let ((hovered-element #false))
@@ -558,7 +627,6 @@
       (match message
 	(`(right-mouse-up)
 	 (out "reinterpreting "(origin 'as-expression))
-	 ;;(interpretation 'unselect!)
 	 (cond ((eq? interpretation origin)
 		(and-let* ((`(,name . ,args) (origin 'as-expression))
 			   (interaction (interactions name))
@@ -713,7 +781,7 @@
     (Workdesk '(x
 		(f x)
 		(f (f x))
-		()
+		((()))
 		(define (! n)
 		  (if (= n 0)
 		      1
