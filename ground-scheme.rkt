@@ -5,6 +5,7 @@
 (require "grand-syntax.rkt")
 (provide is isnt fold-right fold-left find for memoized zip
 	 define/memoized
+	 index-preceding
 	 supplied-keywords supplied-keyword-arguments
 	 corresponding-keyword
 	 define# lambda#
@@ -136,10 +137,20 @@
 	((null? list-b)
 	 list-a)
 	(else
-	 (match-let ((`(,ha . ,ta) list-a)
-		     (`(,hb . ,tb) list-b))
+	 (let ((`(,ha . ,ta) list-a)
+	       (`(,hb . ,tb) list-b))
 	   (if (is ha < hb)
 	       `(,ha . ,(merge ta list-b <))
 	       `(,hb . ,(merge list-a tb <)))))))
 
-  
+(define (index-preceding satisfying? list)
+  (define (index-from start list)
+    (match list
+      ('()
+       start)
+      (`(,head . ,tail)
+       (if (satisfying? head)
+	   start
+	   (index-from (+ start 1) tail)))))
+  (index-from 0 list))
+
