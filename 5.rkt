@@ -239,67 +239,69 @@
 	(_
 	 (apply origin message))))))
 
-(define (KeyboardEditable origin)
-    (define (in-between index)
-      (let ((preceding following (split-at (origin 'elements) index)))
-	(match `(,preceding ,following)
-	  (`(() ())
-	   (out "in-between emptiness")
-	   `(5 5))
-	  (`(() (,next . ,_))
-	   (let ((`(,x ,y) (next 'position))
-		 (`(,w ,h) (next 'size)))
-	     (out "in-between: first is "(my next))
-	     `(,(- x 3) ,(/ (+ y h) 2))))
-	  (`(,preceding ())
-	   (let* ((previous (last preceding))
-		  (`(,x ,y) (previous 'position))
-		  (`(,w ,h) (previous 'size)))
-	     (out "in-between: last is "(my previous))
-	     `(,(+ x w 3) ,(/ (+ y h) 2))))
-	  (`(,preceding (,next . ,_))
-	   (let* ((previous (last preceding))
-		  (`(,x ,y) (previous 'position))
-		  (`(,w ,h) (previous 'size))
-		  (`(,x* ,y*) (next 'position)))
-	     (out "in between "(my previous)" and "(my next))
-	     `(,(/ (+ x w x*) 2) ,(/ (+ y h) 2)))))))
-    
-    (define (move-cursor! direction increment shift)
-      (let ((selected (origin 'selection)))
-	(cond
-	 ((integer? selected)
-	  (or (and-let* ((child (origin 'element-at selected)))
-		(out "trying next child to "selected" in "(my child))
-		(child 'key-down direction))
-	      (and-let* ((elements (origin 'elements))
-			 (total-children (length elements))
-			 ((is selected < total-children))
-			 (child (list-ref elements selected)))
-		(begin
-		  (child 'unselect!)
-		  (origin 'force-select! (in-between (+ selected increment)))
-		  #true))))
-	 ((list? selected)
-	  (and-let* ((`(,x ,y) selected)
-		     (elements (origin 'elements))
-		     (cursor (lambda message
-			       (match message
-				 (`(position)
-				  `(,(- x 2) ,(- y 16)))
-				 (`(size)
-				  `(4 20)))))
-		     (index (+ shift
-			       (index-preceding (is cursor before? _)
-						elements)))
-		     ((is 0 <= index < (length elements))))
-	    (origin 'force-select! index)
-	    ((list-ref elements index) 'select-cursor! `(5 10))
-	    (out "selected "index" in "(my origin))
-	    #true))
+(define ((qualified-cursor x y) . message)
+  (match message
+    (`(position)
+     `(,(- x 2) ,(- y 16)))
+    (`(size)
+     `(4 20))))
 
-	 (else
-	  #false))))
+(define (KeyboardNavigable origin)
+  
+  (define (in-between index)
+    (let ((preceding following (split-at (origin 'elements) index)))
+      (match `(,preceding ,following)
+	(`(() ())
+	 (out "in-between emptiness")
+	 `(5 5))
+	(`(() (,next . ,_))
+	 (let ((`(,x ,y) (next 'position))
+	       (`(,w ,h) (next 'size)))
+	   (out "in-between: first is "(my next))
+	   `(,(- x 3) ,(/ (+ y h) 2))))
+	(`(,preceding ())
+	 (let* ((previous (last preceding))
+		(`(,x ,y) (previous 'position))
+		(`(,w ,h) (previous 'size)))
+	   (out "in-between: last is "(my previous))
+	   `(,(+ x w 3) ,(/ (+ y h) 2))))
+	(`(,preceding (,next . ,_))
+	 (let* ((previous (last preceding))
+		(`(,x ,y) (previous 'position))
+		(`(,w ,h) (previous 'size))
+		(`(,x* ,y*) (next 'position)))
+	   (out "in between "(my previous)" and "(my next))
+	   `(,(/ (+ x w x*) 2) ,(/ (+ y h) 2)))))))
+
+  (define (move-cursor! direction increment shift)
+    (let ((selected (origin 'selection)))
+      (cond
+       ((integer? selected)
+	(or (and-let* ((child (origin 'element-at selected)))
+	      (out "trying next child to "selected" in "(my child))
+	      (child 'key-down direction))
+	    (and-let* ((elements (origin 'elements))
+		       (total-children (length elements))
+		       ((is selected < total-children))
+		       (child (list-ref elements selected)))
+	      (begin
+		(child 'unselect!)
+		(origin 'force-select! (in-between (+ selected increment)))
+		#true))))
+       ((list? selected)
+	(and-let* ((`(,x ,y) selected)
+		   (elements (origin 'elements))
+		   (cursor (qualified-cursor x y))
+		   (index (+ shift (index-preceding (is cursor before? _)
+						    elements)))
+		   ((is 0 <= index < (length elements))))
+	  (origin 'force-select! index)
+	  ((list-ref elements index) 'select-cursor! `(5 10))
+	  (out "selected "index" in "(my origin))
+	  #true))
+
+       (else
+	#false))))
 
   (lambda message
     (match message
@@ -319,6 +321,22 @@
       (_
        (apply origin message)))))
 
+(define (KeyboardFormattable origin)
+  (lambda message
+    (match message
+      (`(key-down #\return)
+       (and-let* ((`(,x ,y) (origin 'selection))
+		  (elements (origin 'elements))
+		  (cursor (qualified-cursor x y))
+		  (index (index-preceding (is cursor before? _)
+					  elements)))
+	 (out index)))
+      
+      (`(key-down ,key)
+       (out key " pressed on "(my origin)))
+      (_
+       (apply origin message)))))
+       
 (define (Hovering collection)
   (let ((hovered-element #false))
     (define (self . message)
@@ -649,14 +667,15 @@
     (Situated
      (MouseTracking
       (Hovering
-       (KeyboardEditable
-	(Selectable
-	 (Highlighting
-	  (Decorated
-	   (Reinterpretable
-	    (laid-out horizontally
-		      (Collection bitboxes)))
-	   #:decoration draw-parentheses!))))))))))
+       (KeyboardNavigable
+	(KeyboardFormattable
+	 (Selectable
+	  (Highlighting
+	   (Decorated
+	    (Reinterpretable
+	     (laid-out horizontally
+		       (Collection bitboxes)))
+	    #:decoration draw-parentheses!)))))))))))
 
 (define (Bit atom)
   (let* ((caption (Caption atom))
@@ -758,8 +777,10 @@
 	     image))
 	  (`(as-expression)
 	   `(digraph . ,neighbour-list))
+	  
 	  (`(acquire-element!)
 	   #false)
+	  
 	  (_
 	   (apply collection message))))))
 
@@ -772,10 +793,11 @@
 	     (Obscurable
 	      (MouseTracking
 	       (Hovering
-		(KeyboardEditable
-		 (Selectable
-		  (Collection (map BitBox initial-document))
-		  #false))))
+		(KeyboardNavigable
+		 (KeyboardFormattable
+		  (Selectable
+		   (Collection (map BitBox initial-document))
+		   #false)))))
 	      #:width width #:height height))))
 
 (define desk
