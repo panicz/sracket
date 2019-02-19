@@ -19,11 +19,24 @@
 
 (define (??? . _) ???)
 
-(define (Un whatever thing)
+(define (Un whatever thing . _)
   thing)
 
 #;(define# (instance? x)
   #false)
+
+;; Zachowania, które pozostają nam do zaimplementowania:
+;; - wciśnięcie enter na boksie:
+;;   - kursor oraz wszyskie elementy, które znajdują się za kursorem,
+;;     powinny zostać przeniesione poniżej elementów znajdujących się
+;;     przed kursorem
+;;   - jeżeli boks jest zbyt wąski, żeby pomieścić zawartość, to powinien
+;;     zostać rozszerzony
+;; - wciśnięcie [ na boksie: dodajemy nowy boks
+;; - wciśnięcie ] na boksie: poruszamy się za aktualne wyrażenie
+;; - wciśnięcie backspace na boskie: jeżeli przed kursorem znajduje się
+;; 
+
 
 (define (instance? x)
   (and (procedure? x)
@@ -166,7 +179,6 @@
        #false)))
   self)
 
-
 (define (Selectable origin [boxed #true])
   
   (let ((selected #false))
@@ -175,74 +187,12 @@
     ;;   is a child at a corresponding index
     ;;   (the thing must be a collection for that to happen)
     ;; - a pair of numbers which represent the coordinates
-    ;; of a cursor
-    (define (self . message)
-      (define (in-between index)
-	 (let ((preceding following (split-at (origin 'elements) index)))
-	   (match `(,preceding ,following)
-	     (`(() ())
-	      (out "in-between emptiness")
-	      `(5 5))
-	     (`(() (,next . ,_))
-	      (let ((`(,x ,y) (next 'position))
-		    (`(,w ,h) (next 'size)))
-		(out "in-between: first is "(my next))
-		`(,(- x 3) ,(/ (+ y h) 2))))
-	     (`(,preceding ())
-	      (let* ((previous (last preceding))
-		     (`(,x ,y) (previous 'position))
-		     (`(,w ,h) (previous 'size)))
-		(out "in-between: last is "(my previous))
-		`(,(+ x w 3) ,(/ (+ y h) 2))))
-	     (`(,preceding (,next . ,_))
-	      (let* ((previous (last preceding))
-		     (`(,x ,y) (previous 'position))
-		     (`(,w ,h) (previous 'size))
-		     (`(,x* ,y*) (next 'position)))
-		(out "in between "(my previous)" and "(my next))
-		`(,(/ (+ x w x*) 2) ,(/ (+ y h) 2)))))))
-      
-      (define (move-cursor! direction increment shift)
-	(cond
-	  ((integer? selected)
-	   (or (and-let* ((child (origin 'element-at selected)))
-		 (out "trying next child to "selected" in "(my child))
-		 (child 'key-down direction))
-	       (and-let* ((elements (self 'elements))
-			  (total-children (length elements))
-			  ((is selected < total-children))
-			  (child (list-ref elements selected)))
-		 (begin
-		   (child 'unselect!)
-		   (set! selected (in-between (+ selected increment)))
-		   #true))))
-	  ((list? selected)
-	   (and-let* ((`(,x ,y) selected)
-		      (elements (self 'elements))
-		      (cursor (lambda message
-				(match message
-				  (`(position)
-				   `(,(- x 2) ,(- y 16)))
-				  (`(size)
-				   `(4 20)))))
-		      (index (+ shift
-				(index-preceding (is cursor before? _)
-						 elements)))
-		      ((is 0 <= index < (length elements))))
-	     (set! selected index)
-	     ((list-ref elements selected) 'select-cursor! `(5 10))
-	     (out "selected "index" in "(my self))
-	     #true))
-
-	  (else
-	   #false)))
-      
+    ;; of a cursor    
+    (lambda message
       (match message
-	(`(key-down right)
-	 (move-cursor! 'right +1 0))
 
-	(`(key-down left)
-	 (move-cursor! 'left 0 -1))
+	(`(selection)
+	 selected)
 	
 	(`(as-image)
 	 (let ((image (origin 'as-image)))
@@ -259,33 +209,15 @@
 	   image))
 
 	(`(select-cursor! (,x ,y))
-	 #;(and-let* ((elements (origin 'elements))
-		    (cursor (lambda message
-			      (match message
-				(`(position)
-				 `(,(- x 2) ,(- y 16)))
-				(`(size)
-				 `(4 20)))))
-		    (index (index-preceding (is cursor before? _) elements))
-		    (before after (split-at elements index)))
-	   (out "cursor placed between "
-		(map (% 'as-expression) before)" and "
-		(map (% 'as-expression) after)))
 	 (set! selected `(,x ,y)))
 
 	(`(select-previous-child!)
 	 (and (integer? selected)
-	      (self 'collection?)
+	      (origin 'collection?)
 	      (is selected > 0)
 	      (begin
 		(set! selected (- selected 1))
 		#true)))
-
-	(`(key-down ,key)
-	 (if (integer? selected)
-	     (let ((target (origin 'element-at selected)))
-	       (target 'key-down key))
-	     (out (origin 'as-expression))))
 
 	(`(force-select! ,selection)
 	 (set! selected selection))
@@ -301,12 +233,91 @@
 	 (and-let* (((integer? selected))
 		    (child (origin 'element-at selected)))
 	   (child 'unselect!))
-	 (out "unselecting "(my self))
+	 (out "unselecting "(my origin))
 	 (set! selected #false))
 
 	(_
-	 (apply origin message))))
-    self))
+	 (apply origin message))))))
+
+(define (KeyboardEditable origin)
+    (define (in-between index)
+      (let ((preceding following (split-at (origin 'elements) index)))
+	(match `(,preceding ,following)
+	  (`(() ())
+	   (out "in-between emptiness")
+	   `(5 5))
+	  (`(() (,next . ,_))
+	   (let ((`(,x ,y) (next 'position))
+		 (`(,w ,h) (next 'size)))
+	     (out "in-between: first is "(my next))
+	     `(,(- x 3) ,(/ (+ y h) 2))))
+	  (`(,preceding ())
+	   (let* ((previous (last preceding))
+		  (`(,x ,y) (previous 'position))
+		  (`(,w ,h) (previous 'size)))
+	     (out "in-between: last is "(my previous))
+	     `(,(+ x w 3) ,(/ (+ y h) 2))))
+	  (`(,preceding (,next . ,_))
+	   (let* ((previous (last preceding))
+		  (`(,x ,y) (previous 'position))
+		  (`(,w ,h) (previous 'size))
+		  (`(,x* ,y*) (next 'position)))
+	     (out "in between "(my previous)" and "(my next))
+	     `(,(/ (+ x w x*) 2) ,(/ (+ y h) 2)))))))
+    
+    (define (move-cursor! direction increment shift)
+      (let ((selected (origin 'selection)))
+	(cond
+	 ((integer? selected)
+	  (or (and-let* ((child (origin 'element-at selected)))
+		(out "trying next child to "selected" in "(my child))
+		(child 'key-down direction))
+	      (and-let* ((elements (origin 'elements))
+			 (total-children (length elements))
+			 ((is selected < total-children))
+			 (child (list-ref elements selected)))
+		(begin
+		  (child 'unselect!)
+		  (origin 'force-select! (in-between (+ selected increment)))
+		  #true))))
+	 ((list? selected)
+	  (and-let* ((`(,x ,y) selected)
+		     (elements (origin 'elements))
+		     (cursor (lambda message
+			       (match message
+				 (`(position)
+				  `(,(- x 2) ,(- y 16)))
+				 (`(size)
+				  `(4 20)))))
+		     (index (+ shift
+			       (index-preceding (is cursor before? _)
+						elements)))
+		     ((is 0 <= index < (length elements))))
+	    (origin 'force-select! index)
+	    ((list-ref elements index) 'select-cursor! `(5 10))
+	    (out "selected "index" in "(my origin))
+	    #true))
+
+	 (else
+	  #false))))
+
+  (lambda message
+    (match message
+      (`(key-down right)
+       (move-cursor! 'right +1 0))
+
+      (`(key-down left)
+       (move-cursor! 'left 0 -1))
+
+      (`(key-down ,key)
+       (let ((selected (origin 'selection)))
+	 (if (integer? selected)
+	     (let ((target (origin 'element-at selected)))
+	       (target 'key-down key))
+	     (origin 'key-down key))))
+      
+      (_
+       (apply origin message)))))
 
 (define (Hovering collection)
   (let ((hovered-element #false))
@@ -421,24 +432,13 @@
   (let ((about-to-select-cursor #false))
     (lambda message
       (match message
-	(`(mouse-down)
-	 (obscurable 'mouse-down)
-	 (and-let* ((obscuring (obscurable 'obscuring-element)))
-	   (set! about-to-select-cursor #true)))
-	
-	(`(mouse-move ,x ,y ,dx ,dy)
-	 (set! about-to-select-cursor #false)
-	 (obscurable 'mouse-move x y dx dy))
-
 	(`(mouse-up)
 	 (and-let* ((selected (obscurable 'mouse-up))
 		    (position (selected 'mouse-position)))
 	   (selected 'select-cursor! position)
 	   selected))
-	
 	(_
 	 (apply obscurable message))))))
-	
 
 (define (draw-parentheses! image width height)
   (let ((X 3))
@@ -460,8 +460,8 @@
 		   #:top [top 0]
 		   #:decoration [decorate! (lambda _ #false)])
   (let* ((`(,target-width ,target-height) (target 'size))
-	 (width (or width (+ left target-width)))
-	 (height (or height (+ top target-height)))
+	 (width (or width (+ left target-width (horizontal-space))))
+	 (height (or height (+ top target-height (vertical-space))))
 	 (background (rectangle width height)))
     (lambda message
       (match message
@@ -605,7 +605,11 @@
 
 (define horizontal-space (make-parameter 10))
 
-(define (horizontal-layout! elements)
+(define (laid-out layout collection)
+  (collection 'collective layout)
+  collection)
+
+(define (horizontally elements)
   (fold-left (lambda (`(,x ,y) element)
 	       (let ((`(,w ,h) (element 'size)))
 		 (element 'move-to! x y)
@@ -613,7 +617,7 @@
 	     `(,(horizontal-space) ,(vertical-space))
 	     elements))
 
-(define (vertical-layout! elements)
+(define (vertically elements)
   (fold-left (lambda (`(,x ,y) element)
 	       (let ((`(,w ,h) (element 'size)))
 		 (element 'move-to! x y)
@@ -638,22 +642,21 @@
 	(_
 	 (apply interpretation message))))))
 
+
 (define (Box bitboxes)
-  (let ((collection (Collection bitboxes)))
-    (collection 'collective horizontal-layout!)
-    (let ((`(,w ,h) (collection 'size)))
-      (Stretchable
-       (Draggable
-	(Situated
-	 (MouseTracking
-	  (Hovering
-	   (Selectable
-	    (Highlighting
-	     (Decorated
-	      (Reinterpretable collection)
-	      #:width (+ w (horizontal-space))
-	      #:height (+ h (vertical-space))
-	      #:decoration draw-parentheses!)))))))))))
+  (Stretchable
+   (Draggable
+    (Situated
+     (MouseTracking
+      (Hovering
+       (KeyboardEditable
+	(Selectable
+	 (Highlighting
+	  (Decorated
+	   (Reinterpretable
+	    (laid-out horizontally
+		      (Collection bitboxes)))
+	   #:decoration draw-parentheses!))))))))))
 
 (define (Bit atom)
   (let* ((caption (Caption atom))
@@ -687,17 +690,16 @@
 	     `(,(cos fraction) ,(sin fraction))))
 	 (range 0 number))))
 
-(define (laid-out-in-circle! objects #:radius [radius #false])
+(define (in-circle objects)
   (let* ((n (length objects))
-	 (r (or radius
-		(* 2 (apply max (map (lambda (object)
+	 (r (* 2 (apply max (map (lambda (object)
 				       (apply max (object 'size)))
-				     objects)))))
+				     objects))))
 	 (points (points-on-circle n)))
     (for-each (lambda (object `(,x ,y))
 		(object 'move-by! (+ (* x r) r) (+ (* y r) r)))
-	      objects points)
-    objects))
+	      objects points))
+  objects)
 
 (define (Vertex name #:surplus [surplus 3] #:radius [radius #false])
   (let* ((caption (Caption name))
@@ -737,7 +739,7 @@
 		p1x p1y p2x p2y 12 12)))
 
 (define (Graph neighbour-list)
-  (let* ((vertices (laid-out-in-circle!
+  (let* ((vertices (in-circle
 		    (map (lambda (`(,node . ,neigbours))
 			   (Vertex node))
 			 neighbour-list)))
@@ -765,16 +767,16 @@
   (Graph neighbour-list))
 
 (define (Workdesk initial-document #:width width #:height height)
-  (let* ((desk (Selecting
-		(Obscurable
-		 (MouseTracking
-		  (Hovering
-		   (Selectable
-		    (Collection (map BitBox initial-document))
-		    #false)))
-		 #:width width #:height height))))
-    (desk 'collective vertical-layout!)
-    desk))
+  (laid-out vertically
+	    (Selecting
+	     (Obscurable
+	      (MouseTracking
+	       (Hovering
+		(KeyboardEditable
+		 (Selectable
+		  (Collection (map BitBox initial-document))
+		  #false))))
+	      #:width width #:height height))))
 
 (define desk
   (let ((`(,w ,h) (screen-size)))
