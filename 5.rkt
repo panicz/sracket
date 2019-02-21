@@ -1,7 +1,7 @@
 #!/usr/bin/env racket
 #lang racket
 (require racket/match)
-(require (only-in srfi/1 delete! list-index))
+(require (only-in srfi/1 delete! list-index span break))
 (require racket/draw/arrow)
 (require "sracket.rkt")
 (require "ground-scheme.rkt")
@@ -208,8 +208,8 @@
 	     (draw-ellipsis! (- x 2) (- y 2) 4 4 image))
 	   image))
 
-	(`(select-cursor! (,x ,y))
-	 (set! selected `(,x ,y)))
+	(`(select-cursor! ,cursor)
+	 (set! selected cursor))
 
 	(`(select-previous-child!)
 	 (and (integer? selected)
@@ -286,7 +286,7 @@
 		       (child (list-ref elements selected)))
 	      (begin
 		(child 'unselect!)
-		(origin 'force-select! (in-between (+ selected increment)))
+		(origin 'select-cursor! (in-between (+ selected increment)))
 		#true))))
        ((list? selected)
 	(and-let* ((`(,x ,y) selected)
@@ -295,7 +295,7 @@
 		   (index (+ shift (index-preceding (is cursor before? _)
 						    elements)))
 		   ((is 0 <= index < (length elements))))
-	  (origin 'force-select! index)
+	  (origin 'select-cursor! index)
 	  ((list-ref elements index) 'select-cursor! `(5 10))
 	  (out "selected "index" in "(my origin))
 	  #true))
@@ -321,6 +321,23 @@
       (_
        (apply origin message)))))
 
+(define (following? A B)
+  (let ((`(,Bx ,By) (B 'position))
+	(`(,Bw ,Bh) (B 'size))
+	(`(,Ax ,Ay) (A 'position)))
+    (and (is By <= Ay <= (+ By Bh))
+	 (is Ax > (+ Bx Bw)))))
+
+(define (below? A B)
+  (let ((`(,Bx ,By) (B 'position))
+	(`(,Bw ,Bh) (B 'size))
+	(`(,Ax ,Ay) (A 'position)))
+    (is Ay > (+ By Bh))))
+
+(define-syntax (dump var ...)
+  (out `(var ,(map (% 'as-expression) var) ,(map (% 'position) var) ,(map (% 'size) var)))
+  ...)
+
 (define (KeyboardFormattable origin)
   (lambda message
     (match message
@@ -328,9 +345,41 @@
        (and-let* ((`(,x ,y) (origin 'selection))
 		  (elements (origin 'elements))
 		  (cursor (qualified-cursor x y))
-		  (index (index-preceding (is cursor before? _)
-					  elements)))
-	 (out index)))
+		  (before `(,model . ,after)
+			  (break (is cursor before? _) elements))
+		  (following below (break (is _ below? model) after))
+		  (following `(,model . ,following))
+		  (before-bottom (apply max
+					0
+					(map (lambda (o)
+					       (let ((`(,x ,y) (o 'position))
+						     (`(,w ,h) (o 'size)))
+						 (+ y h)))
+					     before)))
+		  (following-top (apply min
+					(map (lambda (o)
+					       (let ((`(,x ,y) (o 'position)))
+						 y))
+					     following)))
+		  (vertical-shift-base (+ (vertical-space) (- before-bottom following-top )))
+		  (following-height (apply max
+					(map (lambda (o)
+					       (let ((`(,w ,h) (o 'size)))
+						 h))
+					     following)))
+		  (`(,x ,y) (model 'position))
+		  (`(,w ,h) (model 'size)))
+	 (out "model: "(my model)(model 'position)(model 'size))
+	 (dump elements before following below)
+	 (out "before-bottom: "before-bottom)
+	 (out "following-top: "following-top)
+	 (out "vertical-shift-base: "vertical-shift-base)
+	 (for o in following
+	   (o 'move-by! (- (horizontal-space) x) vertical-shift-base))
+	 (for o in below
+	   (o 'move-by! 0 (+ (vertical-space) following-height)))
+	 
+	 (origin 'key-down #\return)))
       
       (`(key-down ,key)
        (out key " pressed on "(my origin)))
@@ -661,21 +710,42 @@
 	 (apply interpretation message))))))
 
 
+(define (Fitting collection)
+  (define (refit! collection)
+    (let* ((elements (collection 'elements))
+	   (`(,w ,h) (total-area elements)))
+      (collection 'resize-to!
+		  (+ w (horizontal-space))
+		  (+ h (vertical-space)))))
+  (lambda message
+    (match message
+      (`(key-down ,key)
+       (let ((result (collection 'key-down key)))
+	 (refit! collection)
+	 result))
+      (`(add-element! ,element)
+       (let ((result (collection 'add-element! element)))
+	 (refit! collection)
+	 result))
+      (_
+       (apply collection message)))))
+
 (define (Box bitboxes)
-  (Stretchable
-   (Draggable
-    (Situated
-     (MouseTracking
-      (Hovering
-       (KeyboardNavigable
-	(KeyboardFormattable
-	 (Selectable
-	  (Highlighting
-	   (Decorated
-	    (Reinterpretable
-	     (laid-out horizontally
-		       (Collection bitboxes)))
-	    #:decoration draw-parentheses!)))))))))))
+  (Fitting
+   (Stretchable
+    (Draggable
+     (Situated
+      (MouseTracking
+       (Hovering
+	(KeyboardNavigable
+	 (KeyboardFormattable
+	  (Selectable
+	   (Highlighting
+	    (Decorated
+	     (Reinterpretable
+	      (laid-out horizontally
+			(Collection bitboxes)))
+	     #:decoration draw-parentheses!))))))))))))
 
 (define (Bit atom)
   (let* ((caption (Caption atom))
