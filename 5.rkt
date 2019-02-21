@@ -113,7 +113,7 @@
 		    (let ((`(,x ,y) (element 'position))
 			  (`(,w ,h) (element 'size)))
 		      `(,(max X (+ x w)) ,(max Y (+ y h)))))
-		  '(1 1)
+		  `(,(horizontal-space) ,(vertical-space))
 		  objects)))
 
 (define (before? lag1 lag2)
@@ -233,7 +233,6 @@
 	 (and-let* (((integer? selected))
 		    (child (origin 'element-at selected)))
 	   (child 'unselect!))
-	 (out "unselecting "(my origin))
 	 (set! selected #false))
 
 	(_
@@ -380,6 +379,16 @@
 	   (o 'move-by! 0 (+ (vertical-space) following-height)))
 	 
 	 (origin 'key-down #\return)))
+
+      (`(key-down #\[)
+       (and-let* ((`(,x ,y) (origin 'selection))
+		  (newBox (BitBox '())))
+	 (newBox 'move-to! x y)
+	 (origin 'add-element! newBox)
+	 (origin 'unselect!)
+	 (origin 'select! newBox)
+	 (newBox 'select-cursor! `(10 6))
+	 ))
       
       (`(key-down ,key)
        (out key " pressed on "(my origin)))
@@ -668,7 +677,7 @@
 	   (stage 'key-up key))))
 
 
-(define vertical-space (make-parameter 5))
+(define vertical-space (make-parameter 6))
 
 (define horizontal-space (make-parameter 10))
 
