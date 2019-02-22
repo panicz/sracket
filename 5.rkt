@@ -229,6 +229,16 @@
 	 (unless selected
 	   (set! selected (origin 'index-of element))))
 
+	(`(remove-offspring!)
+	 (or (list? selected)
+	     (and-let* (((integer? selected))
+			(offspring (origin 'element-at selected))
+			(position (offspring 'position))
+			(remove? (offspring 'remove-offspring!)))
+	       (origin 'remove-element! offspring)
+	       (set! selected position)
+	       #false)))
+	
 	(`(unselect!)
 	 (and-let* (((integer? selected))
 		    (child (origin 'element-at selected)))
@@ -310,6 +320,9 @@
       (`(key-down left)
        (move-cursor! 'left 0 -1))
 
+      (`(key-down #\rubout)
+       (origin 'remove-offspring!))
+      
       (`(key-down ,key)
        (let ((selected (origin 'selection)))
 	 (if (integer? selected)
@@ -379,7 +392,7 @@
 	   (o 'move-by! 0 (+ (vertical-space) following-height)))
 	 
 	 (origin 'key-down #\return)))
-
+      
       (`(key-down #\[)
        (and-let* ((`(,x ,y) (origin 'selection))
 		  (newBox (BitBox '())))
@@ -391,7 +404,7 @@
 	 ))
       
       (`(key-down ,key)
-       (out key " pressed on "(my origin)))
+       (out (char->integer key) " pressed on "(my origin)))
       (_
        (apply origin message)))))
        
