@@ -749,6 +749,10 @@
        (let ((result (collection 'add-element! element)))
 	 (refit! collection)
 	 result))
+      (`(right-mouse-up)
+       (let ((result (collection 'right-mouse-up)))
+	 (refit! collection)
+	 result))
       (_
        (apply collection message)))))
 
